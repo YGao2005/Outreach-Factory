@@ -3,6 +3,9 @@
 
 The dedicated onboarding surface. Subcommands:
 
+  demo       Zero-setup walkthrough on a fake prospect: prints the four
+             pipeline stages from committed sample files. No Gmail, no API,
+             no model download. The live version is `/draft-outreach --demo`.
   init       Zero-to-test-send onboarding. Builds a TenantConfig from your
              ~/.outreach-factory/config.yml and runs the init wizard
              (Gmail OAuth -> vault setup -> first prospect -> a test send).
@@ -30,6 +33,7 @@ SEND_SCRIPTS = REPO_ROOT / "skills" / "send-outreach" / "scripts"
 CONFIG_TEMPLATE = REPO_ROOT / "config-template" / "config.example.yml"
 ENV_TEMPLATE = REPO_ROOT / "config-template" / ".env.example"
 DEFAULT_HOME = Path.home() / ".outreach-factory"
+DEMO_DIR = REPO_ROOT / "examples" / "demo"
 
 
 def _config_path() -> Path:
@@ -134,6 +138,152 @@ def cmd_config(_args) -> int:
     return 0
 
 
+def _split_frontmatter(text: str) -> tuple[dict, str]:
+    """Split a markdown file's leading frontmatter from its body using only the
+    standard library. The demo's frontmatter is flat ``key: value`` scalars, so
+    a full YAML parser is not needed; keeping the demo dependency-free means
+    `bin/outreach-factory demo` runs on a bare clone with nothing installed.
+
+    Returns ``({}, text)`` when there is no frontmatter block.
+    """
+    if not text.startswith("---"):
+        return {}, text
+    parts = text.split("---", 2)
+    if len(parts) != 3:
+        return {}, text
+    fm: dict[str, str] = {}
+    for line in parts[1].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, _, value = stripped.partition(":")
+        fm[key.strip()] = value.strip().strip('"').strip("'")
+    return fm, parts[2].lstrip("\n")
+
+
+def _indent(text: str, n: int = 4) -> str:
+    pad = " " * n
+    return "\n".join(pad + line if line else line for line in text.splitlines())
+
+
+def _parse_demo_corpus(text: str) -> list[dict]:
+    """Parse examples/demo/voice-corpus.md into exemplar dicts (stdlib only).
+
+    Each exemplar is a ``## id | register | channel | date`` block with an
+    optional ``Subject:`` line followed by the body. Prose before the first
+    ``##`` header is ignored.
+    """
+    exemplars: list[dict] = []
+    current: dict | None = None
+    body_lines: list[str] = []
+
+    def _flush() -> None:
+        if current is not None:
+            current["body"] = "\n".join(body_lines).strip()
+            exemplars.append(current)
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            _flush()
+            fields = [f.strip() for f in line[3:].split("|")]
+            fields += [""] * (4 - len(fields))
+            current = {
+                "id": fields[0], "register": fields[1],
+                "channel": fields[2], "date": fields[3], "subject": None,
+            }
+            body_lines = []
+        elif current is not None:
+            if current["subject"] is None and line.startswith("Subject:"):
+                current["subject"] = line.split(":", 1)[1].strip()
+            else:
+                body_lines.append(line)
+    _flush()
+    return exemplars
+
+
+def cmd_demo(_args) -> int:
+    """Zero-setup walkthrough: print the four pipeline stages for a fake
+    prospect using only committed sample files. No Gmail, no MCP, no API, no
+    model download. The live, agent-generated version is `/draft-outreach
+    --demo` inside Claude Code (see examples/demo/README.md)."""
+    prospect_path = DEMO_DIR / "vault" / "Riley Okafor.md"
+    corpus_path = DEMO_DIR / "voice-corpus.md"
+    scaffold_path = DEMO_DIR / "scaffold.md"
+    draft_path = DEMO_DIR / "sample-draft.md"
+
+    missing = [p for p in (prospect_path, corpus_path, scaffold_path, draft_path) if not p.exists()]
+    if missing:
+        print("ERROR: demo files are missing:", file=sys.stderr)
+        for p in missing:
+            print(f"  {p}", file=sys.stderr)
+        return 2
+
+    rule = "=" * 70
+    thin = "-" * 70
+    print(rule)
+    print("  THE OUTREACH FACTORY DEMO")
+    print("  no setup, no API, no Gmail, no model download")
+    print(rule)
+    print(
+        "\n  Scenario: you are Devon, building Carillon (a small open-source\n"
+        "  library for typed background jobs). You want to cold-email Riley\n"
+        "  Okafor, who just published a postmortem about a job queue losing\n"
+        "  tasks. Below is what the factory does, stage by stage. Everything\n"
+        "  here is fake; nothing is sent.\n"
+    )
+
+    fm, body = _split_frontmatter(prospect_path.read_text(encoding="utf-8"))
+    print(thin)
+    print("  [1 of 4]  PROSPECT  (a real run fills this via /research-prospect)")
+    print(thin)
+    print(f"  name:    {fm.get('name')}")
+    print(f"  company: {fm.get('company')}")
+    print(f"  email:   {fm.get('email')}")
+    print(f"  send as: register={fm.get('register')}  channel={fm.get('channel')}")
+    print(f"  source:  examples/demo/vault/{prospect_path.name}\n")
+    print(_indent(body.strip()))
+    print()
+
+    print(thin)
+    print("  [2 of 4]  SCAFFOLD  (the LLM proposes options, never prose)")
+    print(thin)
+    print(_indent(scaffold_path.read_text(encoding="utf-8").strip()))
+    print()
+
+    corpus = _parse_demo_corpus(corpus_path.read_text(encoding="utf-8"))
+    cold = [e for e in corpus if e.get("register") == "cold-pitch"]
+    print(thin)
+    print("  [3 of 4]  VOICE EXEMPLARS  (your own past emails ground the rewrite)")
+    print(thin)
+    print(
+        f"  This is a cold-pitch, so the {len(cold)} cold-pitch exemplars below\n"
+        f"  (of {len(corpus)} total in examples/demo/voice-corpus.md) are the\n"
+        f"  voice the rewrite matches. No similarity model runs in the demo.\n"
+    )
+    for ex in cold:
+        subject = ex.get("subject") or "(no subject)"
+        print(f"    --- {ex.get('id')}  {ex.get('date')}  subject: {subject}")
+        print(_indent((ex.get("body") or "").strip(), 6))
+        print()
+
+    print(thin)
+    print("  [4 of 4]  FINAL DRAFT  (rewritten inline in the agent's voice)")
+    print(thin)
+    print(_indent(draft_path.read_text(encoding="utf-8").strip()))
+    print()
+
+    print(rule)
+    print("  The final draft above was generated by the agent and committed for")
+    print("  this demo. To generate a FRESH one live (subscription-billed, no")
+    print("  API), run this inside Claude Code:")
+    print("\n      /draft-outreach --demo\n")
+    print("  When you are ready to run your own outreach for real:")
+    print("\n      ./bin/outreach-factory config   # copy the templates, then edit")
+    print("      ./bin/outreach-factory init     # OAuth -> vault -> test send")
+    print(rule)
+    return 0
+
+
 def cmd_doctor(_args) -> int:
     """Delegate to the existing preflight checker."""
     import runpy
@@ -229,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Validate the wiring with a fake Gmail seam and throwaway dirs; no real OAuth/send.",
     )
     p_init.set_defaults(func=cmd_init)
+
+    sub.add_parser(
+        "demo",
+        help="Zero-setup walkthrough on a fake prospect (no Gmail/API/model download).",
+    ).set_defaults(func=cmd_demo)
 
     sub.add_parser("doctor", help="Run preflight checks (scripts/doctor.py).").set_defaults(
         func=cmd_doctor

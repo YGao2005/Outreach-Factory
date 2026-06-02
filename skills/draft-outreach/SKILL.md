@@ -36,6 +36,9 @@ This file contains the user's company, founder identity, vault paths, voice corp
 
 # Manual mode (scaffolds-only; user writes prose; 100% voice fidelity)
 /draft-outreach "Some Founder" SomeCompany --register cold-pitch --manual
+
+# Demo mode (zero-setup; bundled fake prospect; no config/research/MCP/corpus)
+/draft-outreach --demo
 ```
 
 Register is the primary routing parameter. Channel default is derived from register but overridable with `--channel <email|linkedin-dm|linkedin-comment|twitter-dm>`.
@@ -43,6 +46,22 @@ Register is the primary routing parameter. Channel default is derived from regis
 **Default behavior**: the skill auto-assembles a prose draft from scaffold options (Phase 3.5) and pipes through the voice retrieval + inline rewrite (Phase 4). ~85% user voice fidelity at zero user-time-per-email.
 
 **`--manual` flag** (opt-out): skip the auto-assembly + voice rewrite, exit after Phase 3 scaffolds, hand off to user to write prose. Use this when 100% voice fidelity matters (tier-S high-stakes sends, or any time the recipient knows the user personally and would notice the ~15% gap).
+
+---
+
+## Demo mode (`--demo`)
+
+`/draft-outreach --demo` is a zero-setup showcase: it drafts a real cold email for a bundled fake prospect with no config, no `/research-prospect` run, no MCP servers, no Gmail, and no voice-corpus build. Use it to see the pipeline produce live prose in about two minutes.
+
+When `--demo` is set:
+
+1. Skip the Pre-flight config load and Phases 0 and 1. Read the bundled prospect note at `examples/demo/vault/Riley Okafor.md` (it carries a pre-filled dossier with hooks) and the bundled voice corpus at `examples/demo/voice-corpus.md`. The demo sender identity (Devon / Carillon / devon@carillon.example) is stated in `examples/demo/README.md`; use it for the `{founder.*}` and `{company.*}` placeholders.
+2. Run Phase 3 (scaffold) and Phase 3.5 (assemble) normally, using the note's hooks.
+3. Phase 4: do the inline rewrite grounded by the cold-pitch exemplars read DIRECTLY from `voice-corpus.md`. Do NOT call `voice_corpus.py` or `voice_retrieve.py`, and do NOT load any embedding model: with a six-email demo corpus, retrieval ranking is meaningless, so hand the exemplars to the rewrite as-is. The prose is generated live in your own LLM call (subscription-billed), so it will differ from the committed `examples/demo/sample-draft.md` each run.
+4. Run Phase 5's humanizer anti-tell checklist on the result and report it. Skip the hallucination-detection and voice-fidelity gates: they need a dossier path and the embedding substrate, neither of which the demo wires up.
+5. Print the draft. Do NOT save a Touch note, do NOT write to any vault, and do NOT chain to `/send-outreach`. Nothing is sent.
+
+The non-Claude-Code equivalent is `bin/outreach-factory demo`, which prints the same four stages from the committed sample files (no LLM, so its final draft is the canned `sample-draft.md`). See `examples/demo/README.md`.
 
 ---
 

@@ -56,6 +56,7 @@ The fix is not better humanizing. It is **not generating the averaged prose in t
 
 ## What works today
 
+- **A zero-setup demo**: `./bin/outreach-factory demo` prints a complete, voice-grounded cold email for a fake prospect using only the Python standard library, with no Gmail, no API, and no model download. Inside Claude Code, `/draft-outreach --demo` generates one live. See [`examples/demo/`](examples/demo/).
 - **The full pipeline**, end to end: discover leads, research a prospect, draft with voice translation, run the humanizer anti-tell checklist, then batch-send over Gmail (and LinkedIn connection requests).
 - **Orchestrator**: a dispatcher with a state machine, cross-process locks, auto-enrollment, and an append-only ledger as the source of truth (idempotent, crash-recoverable).
 - **Voice translator**: CPU-only local embedding retrieval over your curated email corpus, then an inline rewrite in the agent's own call. No Anthropic API calls.
@@ -66,7 +67,6 @@ The fix is not better humanizing. It is **not generating the averaged prose in t
 
 ### Roadmap (not yet shipped, and labeled as such)
 
-- A zero-setup `--demo` path that drafts an email locally with no Gmail / MCP / corpus wiring.
 - The v1-release security hardening tier: SLSA build provenance, an external penetration test, and formal legal sign-off. Tracked in the decision log, not claimed as done.
 
 ## Subscription-billed by design
@@ -77,9 +77,14 @@ See [docs/BILLING.md](docs/BILLING.md) for the full billing matrix and the subpr
 
 ## Quick start
 
+See it work before installing anything: clone, then run the demo (standard library only, no `pip install` needed).
+
 ```bash
 git clone https://github.com/YGao2005/Outreach-Factory.git ~/code/outreach-factory
 cd ~/code/outreach-factory
+./bin/outreach-factory demo        # zero-setup walkthrough, nothing to install
+
+# then, to run your own outreach for real:
 pip install -r orchestrator/requirements.txt
 ./install.sh                       # symlink the skills + run preflight
 ./bin/outreach-factory config      # copy the config + .env templates, then edit them
