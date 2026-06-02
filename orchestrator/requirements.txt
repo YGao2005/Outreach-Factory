@@ -24,4 +24,4 @@ opentelemetry-exporter-prometheus>=0.59b0
 # `<4` per Pillar H Week 4 follow-up P3-7 closure preserves operator
 # dependency-budget stability against silent breakage on a future
 # aiohttp 4.0 API change.
-aiohttp>=3.9,<4
+aiohttp>=3.14.0,<4
