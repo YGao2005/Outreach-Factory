@@ -1,0 +1,27 @@
+numpy>=1.24
+sentence-transformers>=2.2
+pyyaml>=6.0
+dnspython>=2.0
+
+# .env loading for the unified secret loader (orchestrator/env_loader.py). The
+# loader degrades to a built-in minimal parser if this is absent, so it is a
+# soft dependency, but installing it gives full python-dotenv semantics.
+python-dotenv>=1.0
+
+# Pillar G Week 3 — OpenTelemetry SDK + Prometheus exporter (per ADR-0050
+# D273's framework decision + ADR-0052's Week 3 OTel SDK initialization).
+opentelemetry-api>=1.38
+opentelemetry-sdk>=1.38
+opentelemetry-exporter-prometheus>=0.59b0
+
+# Pillar H Week 4 — asyncio-native HTTP server for the daemon's health
+# endpoint per ADR-0063 D348. The framework-neutrality contract is two-
+# tiered per Pillar H Week 4 follow-up P2-1 closure: (a) operator-
+# deliberate seam kwargs `emit_fn` + `now_fn` + `bind_addr` substitute
+# BACKENDS (ledger + clock + IP) WITHOUT replacing the function body;
+# (b) operators wanting alternative HTTP servers (Tornado / FastAPI /
+# Starlette / etc.) MUST fork `serve_health_endpoint`. The upper bound
+# `<4` per Pillar H Week 4 follow-up P3-7 closure preserves operator
+# dependency-budget stability against silent breakage on a future
+# aiohttp 4.0 API change.
+aiohttp>=3.9,<4

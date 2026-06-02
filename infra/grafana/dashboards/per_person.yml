@@ -1,0 +1,251 @@
+# Pillar G Week 10-11 — per-Person observability surface dashboard
+# Per ADR-0058 D324 (Pillar G Week 10-11 — per-Person observability
+# surface adapters consuming Pillar F's four event classes + the
+# Layer 5 reconcile_drift.reason value per ADR-0050 D277).
+#
+# Renders the per-Person dashboard rows pinned at ADR-0050 D277:
+#
+#   * Per-register fidelity-score distribution
+#     (consumes draft_quality_scored.voice_fidelity_score)
+#   * Per-claim-type hallucination count
+#     (consumes hallucination_detected.uncited_claims)
+#   * Per-Person Layer 5 drift rate
+#     (consumes reconcile_drift.reason ∈
+#      {ready_without_draft_ready_event, vault_ahead_of_ledger})
+#
+# The Layer 5 drift panel MUST subscribe to BOTH legacy
+# (vault_ahead_of_ledger) AND new (ready_without_draft_ready_event)
+# reason values per the Pillar F Week 12 follow-up's legacy-state-vs-
+# new-defense-layer reason-precedence drift discipline per ADR-0049
+# §66 P2-2 — pre-Week-12 operators filtering ONLY on the OLD reason
+# LOSE visibility of refusals that the Layer 5 check PRE-EMPTS; the
+# closed-set PILLAR_F_LAYER_5_DRIFT_REASONS at
+# orchestrator/observability.py pins BOTH reasons.
+#
+# Privacy invariant per I8 + ADR-0032 D148 + ADR-0038 D182 category 8
+# + ADR-0050 D276(b) + ADR-0058 D323 — the dashboard surfaces COUNTS
+# + SCORES only; NEVER draft body content, exemplar bodies, dossier
+# content, per-claim trace text, query content, or source_list. The
+# per-Person primitives' dataclass shapes (PersonRegisterFidelitySnapshot,
+# PersonClaimTypeHallucinationSnapshot, PersonLayer5DriftSnapshot)
+# are the structural commitment.
+#
+# Per ADR-0050 D276(d) Pillar G is single-tenant; per-tenant per-
+# Person attribution is deferred to Pillar I per RETRO-pillar-f.md
+# item 8 + ADR-0049 §Downstream pillar impact. The per-Person
+# dashboard rendered here is single-tenant; multi-tenant operators
+# wire per-tenant labels at the OTel SDK Resource level per ADR-0052
+# D287.
+
+apiVersion: 1
+title: "Outreach Factory — Per-Person observability"
+description: |
+  Pillar G observability — per-Person observability surface per
+  ADR-0058 D319-D324. Three panels rendering the per-Person dashboard
+  rows pinned at ADR-0050 D277:
+
+  * Per-register voice-fidelity distribution
+    (draft_quality_scored events; per register ∈
+    {cold-pitch, congrats, re-engagement, reply, public-comment} per
+    voice_corpus.REGISTERS per ADR-0038 D178).
+  * Per-claim-type hallucination count
+    (hallucination_detected events; per claim_type ∈
+    {date_reference, named_entity, you_phrase, quoted_text,
+    dated_event} per draft_quality.CLAIM_TYPES per ADR-0043 D214).
+  * Per-Person Layer 5 drift rate
+    (reconcile_drift events; per reason ∈
+    {ready_without_draft_ready_event, vault_ahead_of_ledger} per
+    PILLAR_F_LAYER_5_DRIFT_REASONS — BOTH the legacy AND new reasons
+    per the Pillar F Week 12 follow-up's reason-precedence drift
+    discipline per ADR-0049 §66 P2-2).
+
+  Operators consume the per-Person aggregation programmatically via
+  collect_per_person_register_fidelity_snapshots +
+  collect_per_person_claim_type_hallucination_snapshots +
+  collect_per_person_layer_5_drift_snapshots — the per-call ledger
+  walk returns the per-(person_id, sub_axis) snapshots. This
+  dashboard renders the aggregate signal via PromQL filters on the
+  outreach_factory_events_total ObservableCounter; per-Person drill-
+  down is via the ledger query surface (Ledger.all_events_for_person)
+  per the privacy invariant per ADR-0050 D276(b) + ADR-0058 D323.
+
+  Pillar I per-tenant audit-tooling at OSS bring-up extends with
+  per-tenant per-Person dashboards.
+tags:
+  - outreach-factory
+  - pillar-g
+  - observability
+  - per-person
+  - pillar-f-consumer
+datasource: prometheus
+refresh: "60s"
+time:
+  from: "now-24h"
+  to: "now"
+
+panels:
+  - id: 1
+    title: "Per-register draft_quality_scored event rate (1h window)"
+    description: |
+      Per-register draft_quality_scored event rate via PromQL's rate()
+      over the per-event-class outreach_factory_events_total counter
+      filtered to draft_quality_scored (per ADR-0058 D319 + ADR-0045
+      D231). Operators see per-register fidelity-scoring cadence — a
+      register seeing many refused events surfaces here as a spike.
+
+      Per-Person + per-register score distribution surfaces via the
+      per-call collect_per_person_register_fidelity_snapshots
+      primitive (per ADR-0058 D319); operators consume the snapshot
+      list programmatically for per-Person drill-down. The dashboard
+      surfaces the aggregate per-channel signal (channel is the
+      per-DRAFT channel per ADR-0038 D178 + ADR-0014 D33).
+    type: timeseries
+    gridPos: { x: 0, y: 0, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          rate(
+            outreach_factory_events_total{event_class="draft_quality_scored"}[1h]
+          )
+        legendFormat: 'draft_quality_scored {{channel}}'
+        format: time_series
+
+  - id: 2
+    title: "Per-claim-type hallucination_detected event count (24h cumulative)"
+    description: |
+      24h cumulative count of hallucination_detected events. The
+      Pillar F Week 6+ emit-only-on-uncited posture per ADR-0043 D219
+      means EVERY hallucination_detected event on the dashboard
+      represents a Layer 2 + Layer 3 refusal at the per-draft grain.
+
+      Per-(person_id, claim_type) aggregation surfaces via the per-
+      call collect_per_person_claim_type_hallucination_snapshots
+      primitive (per ADR-0058 D320); operators consume the snapshot
+      list programmatically for per-Person drill-down by claim_type
+      ∈ PILLAR_F_CLAIM_TYPES_MIRROR. The dashboard surfaces the
+      aggregate per-channel signal.
+    type: barchart
+    gridPos: { x: 0, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (channel) (
+            increase(
+              outreach_factory_events_total{event_class="hallucination_detected"}[24h]
+            )
+          )
+        legendFormat: '{{channel}}'
+        format: time_series
+
+  - id: 3
+    title: "Per-Person Layer 5 drift rate (24h cumulative reconcile_drift)"
+    description: |
+      24h cumulative count of reconcile_drift events. The per-Person
+      Layer 5 drift dashboard MUST subscribe to BOTH the legacy
+      (vault_ahead_of_ledger) AND new (ready_without_draft_ready_event)
+      reason values per the Pillar F Week 12 follow-up's reason-
+      precedence drift discipline per ADR-0049 §66 P2-2 — pre-Week-12
+      operators filtering ONLY on the OLD reason LOSE visibility
+      whenever vault_stage == "ready"; the dashboard preserves
+      visibility by surfacing the aggregate reconcile_drift rate.
+
+      Per-(person_id, reason) aggregation surfaces via the per-call
+      collect_per_person_layer_5_drift_snapshots primitive (per
+      ADR-0058 D321); operators consume the snapshot list
+      programmatically for per-Person drill-down by reason ∈
+      PILLAR_F_LAYER_5_DRIFT_REASONS = {vault_ahead_of_ledger,
+      ready_without_draft_ready_event}. The third drift reason
+      vault_has_stage_but_ledger_empty is Pass C bootstrap drift,
+      NOT Layer 5 backstop — operators consume that surface via the
+      overview dashboard.
+    type: barchart
+    gridPos: { x: 12, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (channel) (
+            increase(
+              outreach_factory_events_total{event_class="reconcile_drift"}[24h]
+            )
+          )
+        legendFormat: '{{channel}}'
+        format: time_series
+
+  - id: 4
+    title: "Per-Person voice_exemplar_retrieved event rate (1h window)"
+    description: |
+      Per-channel voice_exemplar_retrieved event rate via PromQL's
+      rate() (per ADR-0058 D319 + ADR-0039 D189). Operators see per-
+      DRAFT voice-corpus retrieval cadence — the per-DRAFT retrieval
+      is the upstream of the per-DRAFT fidelity scoring; an absent
+      retrieval surfaces operationally as a per-Person dashboard gap.
+
+      Privacy invariant per I8 + ADR-0038 D182 — the query content +
+      per-exemplar bodies are operator-private; this dashboard
+      surfaces ONLY counts per ADR-0058 D323. Operators inspect the
+      upstream voice_exemplar_retrieved.query_hash for per-DRAFT
+      diagnostics.
+    type: timeseries
+    gridPos: { x: 0, y: 16, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          rate(
+            outreach_factory_events_total{event_class="voice_exemplar_retrieved"}[1h]
+          )
+        legendFormat: 'voice_exemplar_retrieved {{channel}}'
+        format: time_series
+
+  - id: 5
+    title: "Per-channel draft_ready event count (24h cumulative)"
+    description: |
+      24h cumulative count of draft_ready events. The Pillar F Week 10
+      emit-only-on-both-pass posture per ADR-0047 D246 means EVERY
+      draft_ready event represents a Layer 4 emit-guard verdict-pass
+      at the per-draft grain (operator-deliberate overrides surface
+      as draft_ready.hallucination_check == "passed_via_override" OR
+      draft_ready.voice_fidelity_check == "passed_via_override" per
+      ADR-0047 D247).
+
+      Per-(person_id, _) per-Person aggregation lives in the
+      surrounding three panels' primitives; the per-channel draft_ready
+      panel surfaces the per-Pillar-F Layer 4 emit-guard cadence —
+      operators see the per-channel draft-ready throughput in
+      aggregate.
+    type: stat
+    gridPos: { x: 12, y: 16, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (channel) (
+            increase(
+              outreach_factory_events_total{event_class="draft_ready"}[24h]
+            )
+          )
+        legendFormat: 'draft_ready {{channel}}'
+        format: time_series
+
+# Pillar G Week 10-11 carry-forwards for future Pillar G weeks:
+#
+# - Week 12 (Stable flip): the binding exit-criterion test verifies
+#   operators answer the three binding questions via the overview
+#   dashboard + the cost dashboard + the per-Person dashboard + the
+#   funnel CLI in ONE invocation (per ADR-0050 D275 + D276(a)).
+# - Pillar H (daemon + scale): the per-call per-Person primitives are
+#   stateless + per-process; multi-process daemons consume per-process
+#   aggregations independently. Pillar H may surface per-event-class
+#   indexing (for draft_quality_scored / hallucination_detected /
+#   draft_ready / reconcile_drift) as a NEW concern at multi-machine
+#   scale.
+# - Pillar I (OSS bring-up + multi-tenant): per-tenant audit-tooling
+#   adds a per-tenant label to the per-Person metrics + per-tenant
+#   dashboard folders per ADR-0050 D277 §Downstream pillar impact.
+#   Per-tenant override-rate dashboards filter on
+#   draft_ready.hallucination_check == "passed_via_override" per
+#   ADR-0049 §Downstream pillar impact; per-tenant Layer 5 drift-rate
+#   dashboards consume PILLAR_F_LAYER_5_DRIFT_REASONS per the same
+#   reason-precedence drift discipline.
+# - Pillar J (GDPR purge): per-Person event class events are subject
+#   to per-Person GDPR purge per ADR-0049 §Downstream pillar impact;
+#   the per-Person dashboard's underlying primitives' per-Person
+#   snapshots also subject to purge.

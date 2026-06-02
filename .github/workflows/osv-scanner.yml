@@ -1,0 +1,42 @@
+# Pillar J W3 (J3; ADR-0078 D390) — OSV-Scanner dependency vulnerability scan.
+#
+# Scans the repo's pip manifests against the OSV database on push, PR, and a
+# weekly schedule, using the official OSV-Scanner reusable workflows. This is
+# the scanning machinery for the "zero unpatched CVEs > 14d" substrate proxy;
+# human disposition of findings is the v1-release gate (ADR-0076 D384), NOT a
+# code assertion in the golden-path harness.
+#
+# Pairs with Dependabot (.github/dependabot.yml — opens update PRs) and the
+# gitleaks pre-commit hook (.pre-commit-config.yaml — secrets). The reusable
+# workflow ref is bumped by the Dependabot github-actions ecosystem.
+name: osv-scanner
+
+on:
+  push:
+    branches: [main, golden-path-harness]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "30 6 * * 1"  # weekly, Monday 06:30 UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  osv-scan-pr:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v1.9.2
+    with:
+      scan-args: |-
+        --recursive
+        ./
+
+  osv-scan:
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.2
+    with:
+      scan-args: |-
+        --recursive
+        ./

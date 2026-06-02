@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local config (user fills in their own)
+config.yml
+config.local.yml
+.outreach-factory/
+
+# Secrets — never commit a real .env (config-template/.env.example is the template)
+.env
+.env.local
+
+# Voice corpus (user-provided, private)
+voice/corpus/
+voice/embeddings.npy
+voice/index.json
+voice/cleaned.jsonl
+voice/curated.jsonl
+
+# Temp files
+/tmp/
+*.log
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+test_outputs/
+smoke_test_*.json
+.hypothesis/
+/.planning/
+
+# Ralph autonomous loop — runtime state, scaffold, supervisor watchdog (local infra)
+.ralph/

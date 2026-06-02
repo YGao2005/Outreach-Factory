@@ -1,0 +1,244 @@
+# Pillar F Week 7 — date_reference per-claim-type corpus per ADR-0044.
+#
+# Measures the Layer 3 parser's per-claim-type FP/FN rates against
+# operator-judgment ground truth. See sibling README.md for the
+# corpus structure + maintenance discipline.
+#
+# expected_state ground truth:
+#   ready    — every claim a thoughtful operator extracts has a
+#              matching dossier anchor.
+#   refused  — at least one claim has no matching dossier anchor.
+
+version: 1
+claim_type: date_reference
+register: cold-pitch
+channel: email
+
+pairs:
+
+  # ---------------------------------------------------------------
+  # READY — every date_reference claim has a dossier anchor.
+  # ---------------------------------------------------------------
+
+  - id: dref-r-001
+    draft: "Following up on your April 2026 launch."
+    dossier: |
+      [Your launch](https://blog.example.com/april-2026) — April 2026 was when you shipped.
+    expected_state: ready
+    notes: "Month-year with literal substring + nearby URL"
+
+  - id: dref-r-002
+    draft: "Saw your Q1 2026 raise — congrats."
+    dossier: |
+      Q1 2026 raise announcement: https://news.example.com/q1-2026-raise
+    expected_state: ready
+    notes: "Quarter-year with URL"
+
+  - id: dref-r-003
+    draft: "Loved the 2026-04-15 post."
+    dossier: |
+      ## Posts
+      [Apr 15 post](https://blog.example.com/post-2026-04-15) — 2026-04-15 covered shipping.
+    expected_state: ready
+    notes: "ISO date with literal substring"
+
+  - id: dref-r-004
+    draft: "Your last week post resonated."
+    dossier: |
+      Last week we shipped: [post](https://blog.example.com/post).
+    expected_state: ready
+    notes: "Relative-time 'last week' with substring + URL"
+
+  - id: dref-r-005
+    draft: "Excited about your January announcement."
+    dossier: |
+      ## January
+      [Announcement](https://example.com/jan-announce) — January was a big month.
+    expected_state: ready
+    notes: "Bare month with substring + URL"
+
+  - id: dref-r-006
+    draft: "Following up on the March 2026 product update."
+    dossier: |
+      March 2026: shipped product update; see https://product.example.com/march-2026.
+    expected_state: ready
+    notes: "Month-year + URL adjacent"
+
+  - id: dref-r-007
+    draft: "Saw your Q3 2025 hiring spree."
+    dossier: |
+      ## Hiring history
+      Q3 2025 hires: [team page](https://example.com/team).
+    expected_state: ready
+    notes: "Quarter-year cited via markdown link"
+
+  - id: dref-r-008
+    draft: "Excited by yesterday's news drop."
+    dossier: |
+      Yesterday's news drop: https://news.example.com/today.
+    expected_state: ready
+    notes: "Relative-time 'yesterday' with substring"
+
+  - id: dref-r-009
+    draft: "Your this month report was great."
+    dossier: |
+      This month report: [PDF](https://reports.example.com/current).
+    expected_state: ready
+    notes: "Relative-time 'this month' with substring + URL"
+
+  - id: dref-r-010
+    draft: "Q4 2025 retrospective — great read."
+    dossier: |
+      [Q4 2025 retro](https://blog.example.com/q4-2025-retro) — full breakdown of the quarter.
+    expected_state: ready
+    notes: "Quarter-year via markdown link text"
+
+  - id: dref-r-011
+    draft: "Saw your October keynote."
+    dossier: |
+      October keynote: [video](https://video.example.com/october-keynote).
+    expected_state: ready
+    notes: "Bare month cited via substring"
+
+  - id: dref-r-012
+    draft: "Following the 2026-03-01 release."
+    dossier: |
+      Release notes: https://release.example.com/2026-03-01
+      The 2026-03-01 release shipped the new API.
+    expected_state: ready
+    notes: "ISO date appears twice in dossier"
+
+  - id: dref-r-013
+    draft: "Loved your December writeup."
+    dossier: |
+      December writeup: [post](https://blog.example.com/dec-writeup).
+    expected_state: ready
+    notes: "Bare month with markdown link"
+
+  - id: dref-r-014
+    draft: "Your June 2025 essay shaped my thinking."
+    dossier: |
+      ## Essays
+      June 2025 essay: https://essays.example.com/june-2025
+    expected_state: ready
+    notes: "Month-year with explicit URL adjacent"
+
+  - id: dref-r-015
+    draft: "Q2 2026 announcement was bold."
+    dossier: |
+      Q2 2026 announcement covered the roadmap; details at https://example.com/q2-2026.
+    expected_state: ready
+    notes: "Quarter-year with substring + URL"
+
+  # ---------------------------------------------------------------
+  # REFUSED — at least one date_reference claim has no anchor.
+  # ---------------------------------------------------------------
+
+  - id: dref-u-001
+    draft: "Saw your April 2026 raise — congrats."
+    dossier: |
+      Generic content with no April 2026 mention.
+    expected_state: refused
+    notes: "Month-year not in dossier"
+
+  - id: dref-u-002
+    draft: "Loved your Q3 2026 product launch."
+    dossier: |
+      Recent work: https://example.com/recent-work
+    expected_state: refused
+    notes: "Quarter-year not in dossier"
+
+  - id: dref-u-003
+    draft: "Your 2026-05-15 post was insightful."
+    dossier: |
+      ## Recent posts
+      Generic content. No specific date mentioned.
+    expected_state: refused
+    notes: "ISO date absent from dossier"
+
+  - id: dref-u-004
+    draft: "Following up on last quarter's announcement."
+    dossier: |
+      ## Recent work
+      Generic content. No quarterly references.
+    expected_state: refused
+    notes: "Relative-time 'last quarter' missing from dossier"
+
+  - id: dref-u-005
+    draft: "Excited about your November keynote."
+    dossier: |
+      Generic content about your work.
+    expected_state: refused
+    notes: "Bare month 'November' not mentioned"
+
+  - id: dref-u-006
+    draft: "Saw your Q1 2025 acquisition."
+    dossier: |
+      Acquisitions page exists but no Q1 2025 mention.
+    expected_state: refused
+    notes: "Quarter-year absent"
+
+  - id: dref-u-007
+    draft: "Loved the August 2026 talk."
+    dossier: |
+      No August 2026 reference.
+    expected_state: refused
+    notes: "Month-year not in dossier"
+
+  - id: dref-u-008
+    draft: "Following your this year journey."
+    dossier: |
+      ## About
+      Generic content; no 'this year' reference.
+    expected_state: refused
+    notes: "Relative-time absent"
+
+  - id: dref-u-009
+    draft: "Saw your 2025-12-31 retrospective."
+    dossier: |
+      No retrospective mentioned at that date.
+    expected_state: refused
+    notes: "ISO date missing"
+
+  - id: dref-u-010
+    draft: "Your Q4 2024 funding round was bold."
+    dossier: |
+      Funding history exists but no Q4 2024 entry.
+    expected_state: refused
+    notes: "Quarter-year absent"
+
+  - id: dref-u-011
+    draft: "Excited about your March 2025 essay."
+    dossier: |
+      ## Essays
+      Generic essay listings. Nothing from March 2025.
+    expected_state: refused
+    notes: "Month-year not in dossier"
+
+  - id: dref-u-012
+    draft: "Saw your last month writeup."
+    dossier: |
+      Generic dossier. No 'last month' reference.
+    expected_state: refused
+    notes: "Relative-time absent"
+
+  - id: dref-u-013
+    draft: "Loved the September talk."
+    dossier: |
+      Generic. No September talk mentioned.
+    expected_state: refused
+    notes: "Bare month absent"
+
+  - id: dref-u-014
+    draft: "Your 2024-06-30 launch was impressive."
+    dossier: |
+      Launch history exists; 2024-06-30 is not listed.
+    expected_state: refused
+    notes: "ISO date missing"
+
+  - id: dref-u-015
+    draft: "Following up on your Q2 2025 hire."
+    dossier: |
+      Hiring page exists; no Q2 2025 hire mentioned.
+    expected_state: refused
+    notes: "Quarter-year absent"

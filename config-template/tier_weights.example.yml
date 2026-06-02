@@ -1,0 +1,81 @@
+# Tier auto-assignment weights — Pillar E Week 6-8 per ADR-0035.
+#
+# Copy this file to ~/.outreach-factory/tier_weights.yml and tune as your
+# corpus grows. Defaults are calibrated against the reference operator's ~500 Person operator-
+# tagged corpus at Week 6-8 ship time. See ADR-0035 D163 for the rationale.
+#
+# Tier suggestion algorithm:
+#   1. For each signal present on the Person frontmatter, add the
+#      corresponding weight to a running score.
+#   2. Compare the score against the thresholds (highest match wins).
+#   3. Emit a tier_suggested event with the matched tier + the
+#      operator-readable rationale.
+#
+# Signals absent from the Person frontmatter contribute ZERO to the
+# score (NOT a negative weight — absence is observed, not penalized).
+# The default-low tier B is the floor when signals are insufficient.
+#
+# Operator-tunable surface: every signal value's weight is a free integer
+# (typically -2 to +3). Thresholds are operator-set boundary integers.
+# The framework treats the file as an opaque dict; YAML-load errors fail
+# loud at primitive-invocation time.
+
+signals:
+
+  # ---------------------------------------------------------------------
+  # Firmographic signals — from Apollo enrichment (typically not auto-
+  # populated on Person notes today; the graceful-degradation contract
+  # per ADR-0035 D162 makes these optional).
+  # ---------------------------------------------------------------------
+
+  organization_size:
+    small: 0      # <50 employees — neutral
+    mid: 1        # 50-500 — slight boost (typical decision-maker org)
+    large: -1     # >500 — slight penalty (lower acquisition velocity)
+
+  industry:
+    ai_ml: 2      # high-fit (example wedge: AI agent monitoring)
+    saas: 1       # adjacent-fit
+    dev_tools: 1  # adjacent-fit
+    fintech: 0    # neutral
+    other: 0      # default
+
+  funding_stage:
+    pre_seed: 1   # early-stage; budget-constrained but high-intent
+    seed: 2       # high-fit (post-seed agents have agent-failure pain)
+    series_a: 2   # peak-fit (Series A AI startups are buying agent infra)
+    series_b: 1   # slightly past peak; some agent maturity
+    series_c_plus: 0  # later-stage; agent-failure pain is less acute
+
+  # ---------------------------------------------------------------------
+  # Intent signals — from the discovery skill that surfaced the prospect.
+  # Read from discovery_lineage.source_skill (Week 9-11 stamping) OR the
+  # legacy source_channel frontmatter field (back-compat fallback).
+  # ---------------------------------------------------------------------
+
+  source_skill:
+    find-funded-founders: 2  # high-intent (recent funding signal)
+    competitor-customers: 2  # high-precision (proven agent operators)
+    find-leads: 0            # neutral (ICP-fit but no intent signal beyond)
+    research-prospect: 0     # neutral (deepens an existing prospect)
+    manual: 0                # neutral (operator-curated)
+
+  # ---------------------------------------------------------------------
+  # Funding-recency signals — find-funded-founders-specific. The
+  # `funding_recency_days` block defines time-windowed boosts.
+  # ---------------------------------------------------------------------
+
+  funding_recency_days:
+    # If funding_date is within N days of `now`, add the corresponding
+    # weight. Operator-tunable per market velocity.
+    90: 1         # within last 90 days = boost
+
+# -------------------------------------------------------------------------
+# Thresholds — the tier emitted is the highest threshold the score >=.
+# Below the lowest threshold (A: 2), the tier is B (the default-low floor).
+# -------------------------------------------------------------------------
+
+thresholds:
+  S: 4          # score >= 4 → tier S
+  A: 2          # score >= 2 → tier A
+  # else → tier B (the default-low when signals are insufficient)

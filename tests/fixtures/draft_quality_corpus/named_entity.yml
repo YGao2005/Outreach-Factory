@@ -1,0 +1,296 @@
+# Pillar F Week 7 — named_entity per-claim-type corpus per ADR-0044.
+#
+# Measures the Layer 3 parser's per-claim-type FP/FN rates against
+# operator-judgment ground truth. See sibling README.md for the
+# corpus structure + maintenance discipline.
+
+version: 1
+claim_type: named_entity
+register: cold-pitch
+channel: email
+
+pairs:
+
+  # ---------------------------------------------------------------
+  # READY — every named_entity claim has a dossier anchor.
+  # ---------------------------------------------------------------
+
+  - id: nent-r-001
+    draft: "Excited by what Acme Corp is shipping."
+    dossier: |
+      [Acme Corp](https://acme.example.com) is a leader in widgets.
+    expected_state: ready
+    notes: "Two-word company name with markdown link"
+
+  - id: nent-r-002
+    draft: "John Smith's recent talk was excellent."
+    dossier: |
+      [John Smith](https://example.com/john-smith) gave a talk at the conference.
+    expected_state: ready
+    notes: "Person name with markdown link"
+
+  - id: nent-r-003
+    draft: "Following your work at Anthropic Inc."
+    dossier: |
+      Anthropic Inc — see https://anthropic.example.com for details.
+    expected_state: ready
+    notes: "Company name + URL"
+
+  - id: nent-r-004
+    draft: "Loved the Sequoia Capital announcement."
+    dossier: |
+      Sequoia Capital led the round: https://sequoia.example.com/announcement.
+    expected_state: ready
+    notes: "Multi-word VC firm + URL"
+
+  - id: nent-r-005
+    draft: "Following Jane Doe Inc's roadmap."
+    dossier: |
+      [Jane Doe Inc](https://jdi.example.com) shared their roadmap.
+    expected_state: ready
+    notes: "Three-word company name"
+
+  - id: nent-r-006
+    draft: "Excited by Y Combinator W26."
+    dossier: |
+      Y Combinator W26 batch announced: https://example.com/yc-w26.
+    expected_state: ready
+    notes: "Two-word + alphanumeric token"
+
+  - id: nent-r-007
+    draft: "Saw what Google DeepMind released."
+    dossier: |
+      Google DeepMind release: [details](https://deepmind.example.com).
+    expected_state: ready
+    notes: "Two-capitalized-word entity"
+
+  - id: nent-r-008
+    draft: "Following Open AI's research direction."
+    dossier: |
+      [Open AI](https://openai.example.com) shared their direction.
+    expected_state: ready
+    notes: "Two-word entity with 2-char second word"
+
+  - id: nent-r-009
+    draft: "Excited by Microsoft Research's new paper."
+    dossier: |
+      Microsoft Research paper: https://research.example.com/paper.
+    expected_state: ready
+    notes: "Two-word company division"
+
+  - id: nent-r-010
+    draft: "Loved Foo Bar Inc's vision."
+    dossier: |
+      [Foo Bar Inc](https://foobar.example.com) — vision essay.
+    expected_state: ready
+    notes: "Three-word startup name"
+
+  - id: nent-r-011
+    draft: "Following Stanford NLP Group's papers."
+    dossier: |
+      Stanford NLP Group publications: https://nlp.example.com.
+    expected_state: ready
+    notes: "Three-word academic group"
+
+  - id: nent-r-012
+    draft: "Saw Acme Robotics Inc shipping."
+    dossier: |
+      [Acme Robotics Inc](https://acme-robotics.example.com) shipped v2.
+    expected_state: ready
+    notes: "Three-word company"
+
+  - id: nent-r-013
+    draft: "Excited by Hugging Face's new release."
+    dossier: |
+      Hugging Face release: https://huggingface.example.com/release.
+    expected_state: ready
+    notes: "Two-word company name"
+
+  - id: nent-r-014
+    draft: "Following Linear Software's roadmap."
+    dossier: |
+      [Linear Software](https://linear.example.com) — roadmap update.
+    expected_state: ready
+    notes: "Two-word product company"
+
+  - id: nent-r-015
+    draft: "Loved Notion Labs' approach."
+    dossier: |
+      Notion Labs' approach: https://notion.example.com/approach.
+    expected_state: ready
+    notes: "Two-word company with possessive"
+
+  # ---------------------------------------------------------------
+  # REFUSED — at least one named_entity claim has no anchor.
+  # ---------------------------------------------------------------
+
+  - id: nent-u-001
+    draft: "Saw what Acme Corp is shipping."
+    dossier: |
+      Generic dossier with no company names mentioned.
+    expected_state: refused
+    notes: "Two-word company absent from dossier"
+
+  - id: nent-u-002
+    draft: "John Smith's work resonated."
+    dossier: |
+      Generic content about general topics.
+    expected_state: refused
+    notes: "Person name absent"
+
+  - id: nent-u-003
+    draft: "Following Anthropic Inc's research."
+    dossier: |
+      Generic research notes. No specific company mentioned.
+    expected_state: refused
+    notes: "Company name not in dossier"
+
+  - id: nent-u-004
+    draft: "Loved the Sequoia Capital piece."
+    dossier: |
+      Generic VC industry overview.
+    expected_state: refused
+    notes: "VC firm absent"
+
+  - id: nent-u-005
+    draft: "Excited by Y Combinator S26."
+    dossier: |
+      Generic startup ecosystem content.
+    expected_state: refused
+    notes: "Accelerator batch not mentioned"
+
+  - id: nent-u-006
+    draft: "Following Open AI's direction."
+    dossier: |
+      ## About
+      No specific company referenced.
+    expected_state: refused
+    notes: "Company absent"
+
+  - id: nent-u-007
+    draft: "Saw what Google DeepMind shipped."
+    dossier: |
+      AI research overview, no specific labs named.
+    expected_state: refused
+    notes: "Research lab not mentioned"
+
+  - id: nent-u-008
+    draft: "Loved Microsoft Research's paper."
+    dossier: |
+      Recent AI papers overview; no Microsoft Research mention.
+    expected_state: refused
+    notes: "Division not in dossier"
+
+  - id: nent-u-009
+    draft: "Excited by Hugging Face's model."
+    dossier: |
+      Generic model discussion; no specific company.
+    expected_state: refused
+    notes: "Company absent"
+
+  - id: nent-u-010
+    draft: "Following Linear Software's plans."
+    dossier: |
+      Generic productivity tool space.
+    expected_state: refused
+    notes: "Company not in dossier"
+
+  - id: nent-u-011
+    draft: "Loved Foo Bar Inc's pitch."
+    dossier: |
+      Generic startup pitch advice; no Foo Bar Inc.
+    expected_state: refused
+    notes: "Company absent"
+
+  - id: nent-u-012
+    draft: "Saw Stanford NLP Group's work."
+    dossier: |
+      ## Research overview
+      No specific group named.
+    expected_state: refused
+    notes: "Group not in dossier"
+
+  - id: nent-u-013
+    draft: "Following Acme Robotics Inc's news."
+    dossier: |
+      Robotics industry update; no specific company.
+    expected_state: refused
+    notes: "Company not in dossier"
+
+  - id: nent-u-014
+    draft: "Excited by Jane Doe Inc's launch."
+    dossier: |
+      Generic company launches overview.
+    expected_state: refused
+    notes: "Company absent"
+
+  - id: nent-u-015
+    draft: "Loved Notion Labs' essay."
+    dossier: |
+      Generic essay content; no Notion Labs mention.
+    expected_state: refused
+    notes: "Company absent"
+
+  # ---------------------------------------------------------------
+  # PARAPHRASED-READY — Week 11 extension per ADR-0048 D252-D255.
+  # These pairs exercise fuzzy match's WIN case per ADR-0046 D242:
+  # the deterministic substring path returns None (the claim text
+  # is NOT a substring of the dossier), then the Week 9 fuzzy path
+  # activates + correctly cites at threshold 0.85 per ADR-0046 D239.
+  # Per-pair empirical cosine verified at Week 11 commit time to
+  # hit cosine >= 0.85 against the framework default encoder
+  # (BAAI/bge-small-en-v1.5 per ADR-0039 D188). Per ADR-0048 D255
+  # — every paraphrased-ready pair uses a 3+ token entity with a
+  # comma-break inside the entity (e.g., "Acme Robotics, Inc.")
+  # to break substring while preserving all claim tokens for the
+  # cosine-similarity computation.
+  # ---------------------------------------------------------------
+
+  - id: nent-r-p-001
+    draft: "Saw what Acme Robotics Inc is shipping."
+    dossier: |
+      Acme Robotics, Inc. is announcing their plans. https://acme.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: comma break (Acme Robotics Inc → Acme Robotics, Inc.); fuzzy cosine 0.859"
+
+  - id: nent-r-p-002
+    draft: "Excited by Meta AI Research Inc work."
+    dossier: |
+      Meta AI Research, Inc. shared their work. https://meta.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: comma break inside four-word entity; fuzzy cosine 0.879"
+
+  - id: nent-r-p-003
+    draft: "Saw what Foo Bar Robotics Inc announced."
+    dossier: |
+      Foo Bar Robotics, Inc. announced their plans. https://foobar.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: four-word entity + comma break; fuzzy cosine 0.879"
+
+  - id: nent-r-p-004
+    draft: "Excited by Beacon Software Solutions Inc release."
+    dossier: |
+      Beacon Software Solutions, Inc. shipped a release. https://beacon.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: four-word entity + comma break; fuzzy cosine 0.852"
+
+  - id: nent-r-p-005
+    draft: "Saw what Foo Bar Software Inc is doing."
+    dossier: |
+      Foo Bar Software, Inc. is announcing their plans. https://foosoft.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: four-word entity + comma break + matching verb phrasing; fuzzy cosine 0.860"
+
+  - id: nent-r-p-006
+    draft: "Excited by Vertex AI Labs Inc findings."
+    dossier: |
+      Vertex AI Labs, Inc. shared their findings. https://vertex.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: four-word entity + comma break + matching noun; fuzzy cosine 0.866"
+
+  - id: nent-r-p-007
+    draft: "Saw what Acme Pharma Research Inc shipped."
+    dossier: |
+      Acme Pharma Research, Inc. shared their work. https://pharma.example.com
+    expected_state: ready
+    notes: "Paraphrased-ready W11: four-word entity + comma break; fuzzy cosine 0.856"

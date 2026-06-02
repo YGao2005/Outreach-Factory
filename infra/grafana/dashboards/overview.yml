@@ -1,0 +1,161 @@
+# Pillar G Week 4 — first Grafana-as-code dashboard
+# Per ADR-0053 D293 (Pillar G Week 4 — Prometheus exporter wiring +
+# bare metric set extension + first Grafana-as-code dashboard).
+#
+# Renders the operator's three binding exit-criterion questions per
+# ADR-0050 D275 + PILLAR-PLAN §2 Pillar G:
+#
+#   1. "Why is dispatch slow today?" — per-channel send-latency p99
+#      panel (the `outreach_factory_send_latency_seconds` Histogram).
+#   2. "Where am I losing prospects?" — per-event-class rate over the
+#      window (the `outreach_factory_events_total` ObservableCounter).
+#   3. "What did the gate refuse this week?" — per-event-class 24h
+#      breakdown (extracts refusal events: `reconcile_drift`,
+#      `policy_blocked`, `cooldown_blocked`, `dedup_blocked`,
+#      `bounce_detected`, `hallucination_detected`).
+#
+# Plus the reconcile success ratio SLO signal per PILLAR-PLAN §2
+# Pillar G (the framework's 99% reconcile success threshold).
+#
+# This YAML is a high-level operator-readable description of the
+# dashboard structure — future Grafana-provisioning code (or a
+# manual import into Grafana) consumes this format. Pillar G Week
+# 4 ships this YAML as the canonical operator-facing description;
+# future Pillar G weeks MAY add a grafonnet-Python generator or a
+# direct Grafana JSON variant.
+
+apiVersion: 1
+title: "Outreach Factory — Overview"
+description: |
+  Pillar G observability — first Grafana-as-code dashboard. Renders
+  the three binding exit-criterion questions per ADR-0050 D275:
+  per-event-class rate (where am I losing prospects?) + per-channel
+  send-latency p99 (why is dispatch slow today?) + per-event-class
+  24h breakdown (what did the gate refuse this week?). Plus the
+  reconcile success ratio SLO signal per PILLAR-PLAN §2 Pillar G.
+tags:
+  - outreach-factory
+  - pillar-g
+  - observability
+datasource: prometheus
+refresh: "30s"
+time:
+  from: "now-1h"
+  to: "now"
+
+panels:
+  - id: 1
+    title: "Per-event-class event rate (1h window)"
+    description: |
+      Binding question 2 per ADR-0050 D275 — "Where am I losing
+      prospects?". Per-event-class rate over the 1h window via
+      PromQL's rate() function (cumulative-counter semantics per
+      ADR-0052 D285). Operators see per-stage funnel drop-off by
+      comparing the rate of enrolled / researched / drafted /
+      send_confirmed / reply_received / conversation_outcome events.
+    type: timeseries
+    gridPos: { x: 0, y: 0, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: 'rate(outreach_factory_events_total[1h])'
+        legendFormat: '{{event_class}} ({{channel}})'
+        format: time_series
+
+  - id: 2
+    title: "Per-channel send latency p99 (5m window)"
+    description: |
+      Binding question 1 per ADR-0050 D275 — "Why is dispatch slow
+      today?". Per-channel p99 send latency via PromQL's
+      histogram_quantile() over the 5m rate of the
+      outreach_factory_send_latency_seconds histogram buckets per
+      ADR-0053 D289. The 5s threshold line marks the SLO violation
+      bound per PILLAR-PLAN §2 Pillar G (p99 send latency > 5s).
+    type: timeseries
+    gridPos: { x: 0, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(outreach_factory_send_latency_seconds_bucket[5m]))
+            by (le, channel)
+          )
+        legendFormat: 'p99 {{channel}}'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "s"
+        thresholds:
+          mode: absolute
+          steps:
+            - color: green
+              value: null
+            - color: red
+              value: 5.0   # SLO threshold per PILLAR-PLAN §2 Pillar G
+
+  - id: 3
+    title: "Reconcile success ratio (rolling 30d window)"
+    description: |
+      Operator-actionable SLO signal per PILLAR-PLAN §2 Pillar G
+      (reconcile success < 99% threshold). Computed as N_healed /
+      (N_healed + N_drift) over the rolling window via the
+      outreach_factory_reconcile_success_ratio ObservableGauge per
+      ADR-0053 D290. Vacuous success (no reconcile activity) → 1.0;
+      drift-only → 0.0.
+    type: stat
+    gridPos: { x: 12, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: 'outreach_factory_reconcile_success_ratio'
+        legendFormat: 'ratio'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "percentunit"
+        min: 0
+        max: 1
+        thresholds:
+          mode: absolute
+          steps:
+            - color: red
+              value: null
+            - color: orange
+              value: 0.95
+            - color: green
+              value: 0.99   # SLO threshold per PILLAR-PLAN §2 Pillar G
+
+  - id: 4
+    title: "Per-event-class 24h cumulative breakdown"
+    description: |
+      Binding question 3 per ADR-0050 D275 — "What did the gate
+      refuse this week?". Per-event-class 24h cumulative counts via
+      PromQL's increase() function. Operators inspect the refusal
+      event classes (reconcile_drift, policy_blocked,
+      cooldown_blocked, dedup_blocked, bounce_detected,
+      hallucination_detected) to understand what was filtered.
+    type: barchart
+    gridPos: { x: 0, y: 16, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (event_class) (
+            increase(outreach_factory_events_total[24h])
+          )
+        legendFormat: '{{event_class}}'
+        format: time_series
+
+# Pillar G Week 4 carry-forwards for future Pillar G weeks:
+#
+# - Week 5-6 (OTel tracing): adds per-stage span panels — operators
+#   see the discovery → enrichment → research → draft → review →
+#   send → reply → win/loss pipeline trace.
+# - Week 7-8 (SLO alerting): adds slo_violation_detected event panels
+#   + Slack webhook integration; the dashboard panels render the SLO
+#   thresholds inline.
+# - Week 9 (cost dashboard): adds per-source cost panels (Anthropic
+#   + Apollo + PDL + Reoon + Gmail quota per PILLAR-PLAN §2 Pillar G).
+# - Week 10-11 (per-Person dashboards): adds per-register fidelity
+#   distribution + per-claim-type hallucination count + per-Person
+#   Layer 5 drift rate + per-operator override-rate panels.
+# - Week 12 (Stable flip): the binding exit-criterion test verifies
+#   operators answer all three questions via this dashboard + the
+#   funnel CLI in ONE invocation.

@@ -1,0 +1,175 @@
+# Outreach-factory interest reply-pattern classifier rule list.
+#
+# This file is the operator-tunable source of truth for "did the
+# recipient signal positive interest worth follow-up?" decisions.
+# Pillar D Week 3 (ADR-0027 D108-D110) extends the rule-based
+# classifier to the interest category via this file's patterns. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar D (reply + conversation handling)
+#   - docs/adr/0027-pillar-d-long-tail-and-per-channel-reply-detection.md
+#     D108 (long-tail categories ship rule-based first) + D110
+#     (dispatch priority order — interest evaluated LAST among long-
+#     tail categories because it's the highest-ambiguity signal).
+#   - docs/SOURCES-OF-TRUTH.md row "Classifier pattern lists"
+#
+# Copy to ~/.outreach-factory/classifier/interest-patterns.yml and
+# edit. The classifier loads this file at construction time; changes
+# take effect on the next Pass G invocation.
+#
+# Format
+# ------
+# - `version: 1` is REQUIRED.
+# - `patterns:` is a list of Python regex source strings.
+# - Each pattern is compiled with `re.IGNORECASE` automatically.
+# - A malformed regex raises `PatternLoadError` at load time per
+#   ADR-0026 D103.
+#
+# Failure-cost calculus for the interest category
+# -----------------------------------------------
+# The interest category is the HIGHEST-AMBIGUITY long-tail category.
+# "Sounds interesting" can mean (a) genuine interest worth follow-up,
+# (b) polite-non-commit ("interesting but no thanks"), (c) deflection
+# ("sounds interesting, will look at it later"). Per PILLAR-PLAN §0's
+# asymmetric-failure-cost calculus:
+#   - A MISSED interest (false-negative) = the operator's pipeline
+#     doesn't flag the prospect as warm; a slower follow-up cadence.
+#     Cost: SLOWER warm-prospect conversion.
+#   - A FALSE-POSITIVE interest = the pipeline flags the prospect as
+#     warm when they're not; the operator may send an over-eager
+#     follow-up that lands awkwardly.
+#     Cost: ONE awkward follow-up.
+#
+# Both costs are RECOVERABLE. The patterns below are CONSERVATIVE +
+# operator should be aware of the inherent ambiguity. The interest
+# category is evaluated LAST among the long-tail categories per
+# DISPATCH_PRIORITY so more-specific signals (rejection / wrong_person
+# / ooo / unsubscribe) win on competing matches.
+#
+# Pattern-set tuning
+# ------------------
+# Interest replies follow several phrasings: explicit invitation
+# ("send me more"), schedule-request ("can we book a call?"), warm
+# acknowledgment ("sounds interesting"), and information request
+# ("tell me more about pricing"). The patterns capture all four
+# families. Operators tuning may add vertical-specific phrasings
+# ("happy to demo this with our team"; "interested in a pilot").
+#
+# Inline comments per pattern
+# ---------------------------
+# Each pattern below carries a comment explaining what it matches +
+# any known-false-positive considerations.
+
+version: 1
+
+patterns:
+
+  # ----- 1. "send me more (info|details|information|pricing)" -----
+  # Explicit information request — high-confidence interest signal.
+  # The trailing word constraint requires a topic noun.
+  - "(?i)\\bsend (?:me|us|over|me over|us over) (?:more|the|some|additional)? ?(?:info|details|information|pricing|deck|materials|case studies|whitepaper)\\b"
+
+  # ----- 2a. "(can|could|would|let's|...) (book|schedule|set up) (a) ... (call|meeting|chat|demo)" -----
+  # The schedule-request family — high-confidence interest signal.
+  # The recipient is asking for the next-step action. Captures the
+  # canonical "book a call" + variants. Split into TWO simpler patterns
+  # (was one nested-optional pattern; the original had a theoretical
+  # catastrophic-backtracking risk per the Week 3 per-week reviewer's
+  # P3-B finding — `(?:\\s+(?:we|you|i))?` followed by a space literal
+  # before a second alternation could exhibit super-linear backtracking
+  # on adversarial input + Python's `re` module has no built-in timeout
+  # guard).
+  #
+  # Pattern 2a — lead-in verb + schedule-verb + collateral noun (no
+  # subject between the lead-in and the schedule-verb).
+  - "(?i)\\b(?:can|could|would|let's|let me|happy to|i'd like to|i would like to) (?:book|schedule|set up|setup|hop on|jump on|grab|find time for|chat about)\\b"
+
+  # ----- 2b. "(can|could|would) (we|you|i) (book|schedule|set up) ..." -----
+  # The same schedule-request family WITH an explicit subject pronoun
+  # between the lead-in and the verb. The two patterns are linear
+  # alternatives — no nested optional groups + no catastrophic
+  # backtracking risk.
+  - "(?i)\\b(?:can|could|would) (?:we|you|i) (?:book|schedule|set up|setup|hop on|jump on|grab|find time for|chat about)\\b"
+
+  # ----- 3. "would love to (chat|talk|discuss|hear more|learn more)" -----
+  # The warm-acknowledgment family — moderate-confidence interest
+  # signal. "Would love to" is enthusiast phrasing; followed by an
+  # action-verb anchors the signal. False-positive risk on "would
+  # love to but" (declining politely); the rejection patterns are
+  # evaluated BEFORE interest in DISPATCH_PRIORITY so the "but" path
+  # wins.
+  - "(?i)\\bwould love to (?:chat|talk|discuss|hear (?:more|about)|learn (?:more|about)|see|explore|connect|hop on)\\b"
+
+  # ----- 4. "(sounds|looks) (interesting|great|good|promising|relevant)" -----
+  # The warm-acknowledgment family. Lower confidence — these phrases
+  # often appear in polite-non-commit replies ("sounds interesting,
+  # but we're not in market right now"). The rejection patterns are
+  # evaluated BEFORE interest so the "but" path wins; this pattern is
+  # the fallback for replies that DON'T also include rejection
+  # signals.
+  - "(?i)\\b(?:sounds|looks|seems|this is)\\s+(?:interesting|great|good|promising|relevant|compelling|intriguing|worth (?:exploring|discussing|considering))\\b"
+
+  # ----- 5. "interested in (learning|hearing|seeing|exploring) more" -----
+  # The explicit interest-verb family. High-confidence signal — the
+  # recipient is directly stating interest. The trailing action verb
+  # anchors the signal.
+  - "(?i)\\binterested in (?:learning|hearing|seeing|exploring|discussing|chatting about|knowing|finding out)\\b"
+
+  # ----- 6. "tell me more (about)?" -----
+  # The information-request imperative — high-confidence interest
+  # signal. Common in informal replies. The optional `(about)?`
+  # accommodates both "tell me more" + "tell me more about pricing".
+  - "(?i)\\btell me more(?:\\s+about)?\\b"
+
+  # ----- 7. "do you have (a|any) (deck|case studies|whitepaper|demo)" -----
+  # The materials-request family — high-confidence interest signal.
+  # The recipient is asking for collateral to evaluate. The trailing
+  # collateral noun is constrained.
+  - "(?i)\\b(?:do you have|can you send|happy to receive)\\s+(?:a|any|the|some)?\\s*(?:deck|case studies|whitepaper|demo|pricing sheet|brochure|one[- ]?pager|datasheet|product sheet)\\b"
+
+  # ----- 8. "(when|what's) a good time" / "what's your availability" -----
+  # The schedule-coordination family. The recipient is moving to the
+  # logistics phase of an interested conversation.
+  - "(?i)\\b(?:when's|what's|what is|when is) (?:a good time|your availability|the best time|the right time)\\b"
+
+  # ----- 9. "I'd be (interested|happy|keen) to" -----
+  # The conditional-positive family. Lower-confidence than the explicit
+  # invitation patterns but a common phrasing in formal corporate
+  # replies. The trailing action verb anchors the signal.
+  - "(?i)\\bi'd be (?:interested|happy|keen|glad|delighted|open|willing) to (?:chat|talk|discuss|hear|learn|explore|connect|see|hop on|jump on|set up|schedule|consider)\\b"
+
+  # ----- 10. "open to a (chat|call|discussion|conversation)" -----
+  # The receptive-posture signal — moderate confidence. Common in
+  # measured corporate replies ("we'd be open to a conversation").
+  # Captures "open to a chat" + variants.
+  - "(?i)\\bopen to (?:a |an |the )?(?:chat|call|discussion|conversation|demo|exploratory call|brief call|quick chat|short meeting)\\b"
+
+
+notes:
+  # Operator-curated context. The classifier ignores this field.
+  last_reviewed: "2026-05-23"
+  pillar: "D Week 3 (long-tail categories)"
+  notes: |
+    Factory defaults — conservative pattern set. Tuned for English-
+    language B2B cold-outreach context.
+
+    KNOWN AMBIGUITY: the interest category is intrinsically harder
+    to classify by rule than unsubscribe / ooo / wrong_person /
+    rejection. The dispatch priority order (DISPATCH_PRIORITY in
+    `reply_classifier.py`) evaluates the more-specific categories
+    FIRST so the rejection signal in "sounds interesting but we're
+    not in market" correctly wins over the interest signal. If your
+    reply corpus shows competing patterns frequently, audit the
+    other categories' patterns before tuning interest's.
+
+    Future Pillar D Week 6-8 (ADR-0029 — TBD) ships an LLM fallback
+    for the long-tail categories. The LLM is expected to outperform
+    rules on interest classification specifically (most ambiguous
+    category); operators may RAISE their rule-based interest
+    threshold once the LLM fallback ships + accept higher rule-
+    based false-negatives in exchange for higher LLM precision.
+
+    Operators wanting LOWER false-negatives (catch more interest at
+    the cost of more false-positives) may:
+      - Loosen pattern 4 to also match "sounds awesome".
+      - Add patterns for vertical-specific positive phrasings
+        ("happy to demo with our team", "interested in a pilot").
+      - Lower the schedule-coordination pattern 8's strictness.

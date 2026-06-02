@@ -1,0 +1,154 @@
+# Outreach-factory wrong-person reply-pattern classifier rule list.
+#
+# This file is the operator-tunable source of truth for "did the
+# recipient signal they're the wrong contact + name a better one?"
+# decisions. Pillar D Week 3 (ADR-0027 D108-D110) extends the
+# rule-based classifier to the wrong_person category via this file's
+# patterns. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar D (reply + conversation handling)
+#   - docs/adr/0027-pillar-d-long-tail-and-per-channel-reply-detection.md
+#     D108 (long-tail categories ship rule-based first) + D110
+#     (dispatch priority order — wrong_person evaluated THIRD after
+#     unsubscribe + ooo).
+#   - docs/SOURCES-OF-TRUTH.md row "Classifier pattern lists"
+#
+# Copy to ~/.outreach-factory/classifier/wrong-person-patterns.yml
+# and edit. The classifier loads this file at construction time;
+# changes take effect on the next Pass G invocation.
+#
+# Format
+# ------
+# - `version: 1` is REQUIRED.
+# - `patterns:` is a list of Python regex source strings.
+# - Each pattern is compiled with `re.IGNORECASE` automatically.
+# - A malformed regex raises `PatternLoadError` at load time per
+#   ADR-0026 D103.
+#
+# Failure-cost calculus for the wrong_person category
+# ---------------------------------------------------
+# The wrong_person classification triggers an OPERATOR-FACING signal:
+# the prospect is not the right contact AT the company, but the company
+# IS in the ICP. Pillar D Week 4-5+ may use this to (a) mark the
+# prospect as `wrong_person` in the vault, (b) extract the named
+# alternative ("try our CTO Jane") via the LLM fallback in Week 6-8 +
+# enrich a new prospect record for Jane, OR (c) flag the company for
+# manual operator routing. Per PILLAR-PLAN §0's asymmetric-failure-cost:
+#   - A MISSED wrong_person (false-negative) = the prospect ignores or
+#     hard-rejects the follow-up; the next outreach is wasted.
+#     Cost: ONE wasted follow-up.
+#   - A FALSE-POSITIVE wrong_person = the prospect is mis-flagged; the
+#     pipeline pauses; the operator manually reviews + corrects.
+#     Cost: ONE manual review.
+#
+# Both costs are RECOVERABLE. The patterns below are CONSERVATIVE.
+#
+# Pattern-set tuning
+# ------------------
+# Wrong-person replies follow several common phrasings: explicit
+# disavowal ("you have the wrong person"), title-mismatch signals
+# ("I'm not the right contact for this"), and explicit redirects
+# ("please reach out to <name>"). The patterns capture all three
+# families. Operators in larger-enterprise B2B contexts may see
+# specific phrasings ("not in my purview", "above my pay grade",
+# "you'll want to speak with our procurement team"); tune as needed.
+#
+# Inline comments per pattern
+# ---------------------------
+# Each pattern below carries a comment explaining what it matches +
+# any known-false-positive considerations.
+
+version: 1
+
+patterns:
+
+  # ----- 1. "wrong person" / "wrong contact" -----
+  # The canonical explicit disavowal. Captures both "you have the
+  # wrong person" + "wrong person to ask" + "wrong contact for this".
+  # Word boundary protects against compound words.
+  - "(?i)\\bwrong (?:person|contact|recipient|individual|address)\\b"
+
+  # ----- 2. "not the right (person|contact|one)" -----
+  # The negated form — recipient says THEY are not the right contact.
+  # Common in formal corporate replies. The trailing
+  # `(?:person|contact|...)` constraint prevents matching innocuous
+  # phrases like "not the right time" or "not the right approach".
+  - "(?i)\\b(?:i'm|i am|am)\\s+not the right (?:person|contact|one|individual|fit)\\b"
+
+  # ----- 3. "I'm not in charge of" / "not my (department|area|team)" -----
+  # The scope-disavowal family. Recipient acknowledges the request is
+  # valid but they're not the owner. Captures "not my department",
+  # "not my purview", "not my area", "not in my responsibility".
+  - "(?i)\\bnot (?:my|in my) (?:department|area|purview|responsibility|team|role|wheelhouse|jurisdiction|scope)\\b"
+
+  # ----- 4. "you (should|would|might want to|need to) (talk|speak|reach out|contact) (to|with)? <NAME|TITLE>" -----
+  # The explicit redirect family. The recipient suggests a specific
+  # alternative contact. The pattern matches the "redirect verb"
+  # families with optional intervening pronoun ("I'd recommend you
+  # contact"; some redirect verbs ("contact", "email", "message")
+  # don't require a preposition ("contact John" vs "speak with John"),
+  # so the post-verb preposition is also optional. Operators tuning
+  # may add title-specific catches ("speak with our VP of Engineering").
+  - "(?i)\\b(?:you'd|you would|you should|you'll want to|you might want to|you may want to|i'd recommend|i suggest|i recommend|i'd suggest)\\s+(?:you\\s+|we\\s+|i\\s+)?(?:speak|talk|reach out|contact|chat|connect|email|message)\\b"
+
+  # ----- 5. "(please )?reach out to <NAME|TITLE>" / "contact <NAME|TITLE>" -----
+  # Imperative redirect — recipient instructs operator to contact a
+  # named alternative. Common in formal corporate replies. The
+  # trailing word constraint requires a "to <name>" anchor.
+  - "(?i)\\b(?:please )?(?:reach out to|contact|email|message)\\s+(?:our|the|my)?\\s*(?:cto|ceo|coo|cfo|cmo|vp|vice president|head of|director|manager|chief|founder|colleague|teammate|counterpart)\\b"
+
+  # ----- 6. "try <our|the> <ROLE>" -----
+  # Short-form redirect (informal). "try our CTO" / "try the head of
+  # engineering" / "try our procurement team". Pattern is intentionally
+  # narrow (the trailing role-noun set is closed) to avoid false-
+  # positives on innocuous phrases like "try our new product".
+  - "(?i)\\btry (?:our|the|my)\\s+(?:cto|ceo|coo|cfo|cmo|vp|vice president|head of|director|chief|founder|procurement|engineering|sales|marketing|hr|legal|finance|it)\\b"
+
+  # ----- 7. "redirect(ed|ing)? (you|this) to" / "forward(ed|ing)? (you|this) to" -----
+  # The active-redirect family — recipient is forwarding the message
+  # to someone else. Operationally this is also a wrong_person signal
+  # (the recipient is acknowledging they're not the contact + actively
+  # routing). Two phrasing shapes covered:
+  #   (a) direct redirect/forward: "redirecting this to <X>",
+  #       "forwarded this to <X>", "redirected to <X>".
+  #   (b) pass-along: "passed this along to <X>", "passed this on to <X>".
+  - "(?i)\\b(?:redirect(?:ed|ing)?|forward(?:ed|ing)?)(?:\\s+(?:you|this|it|your message|the request))?\\s+to\\b"
+  - "(?i)\\bpass(?:ed|ing)?\\s+(?:this\\s+|it\\s+|your message\\s+|the request\\s+)?(?:along|on)\\s+to\\b"
+
+  # ----- 8. "no longer with (us|the company)" / "left the company" -----
+  # The alumni / churn signal — the prospect themselves has departed.
+  # Often emitted by an auto-reply from their former email account or
+  # a colleague replying on their behalf. Operationally distinct from
+  # wrong_person (the role is vacant, not mis-routed) but the
+  # downstream action (pause + re-enrich the company's new contact)
+  # is similar. Include here for v1 convenience; future weeks may
+  # split into a `churned` category.
+  - "(?i)\\b(?:no longer (?:with|at|works at|works for)|has left|left)\\s+(?:the company|us|<company>|here)\\b"
+
+  # ----- 9. "wrong department" / "wrong team" -----
+  # Coarser scope-disavowal. Common in large-enterprise replies.
+  # Captures "this is the wrong department for that question".
+  - "(?i)\\bwrong (?:department|team|division|group|division)\\b"
+
+  # ----- 10. "I don't handle" / "we don't handle" -----
+  # The scope-disavowal phrased as denial. Captures "I don't handle
+  # sales / partnerships / vendor relationships". Word-boundary
+  # protects against "handle bars". Trailing word constraint requires
+  # a topic noun.
+  - "(?i)\\b(?:i don't|we don't|i do not|we do not) handle\\b"
+
+
+notes:
+  # Operator-curated context. The classifier ignores this field.
+  last_reviewed: "2026-05-23"
+  pillar: "D Week 3 (long-tail categories)"
+  notes: |
+    Factory defaults — conservative pattern set. Tuned for English-
+    language B2B cold-outreach context. Operators in other verticals
+    or languages should sample their wrong-person reply corpus + extend.
+
+    Future Pillar D Week 6-8 (ADR-0029 — TBD) ships an LLM fallback
+    for the long-tail categories. The LLM may EXTRACT the named
+    alternative from the reply ("try our CTO Jane Doe") for
+    downstream enrichment + new-prospect creation. Pattern matching
+    in v1 (Week 3) only CLASSIFIES the reply category; extraction
+    is a Week 6-8 deliverable.

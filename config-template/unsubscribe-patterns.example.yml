@@ -1,0 +1,206 @@
+# Outreach-factory unsubscribe-pattern classifier rule list.
+#
+# This file is the operator-tunable source of truth for "does this reply
+# look like an unsubscribe request?" decisions. Pillar D Week 2 ships
+# the rule-based classifier (per ADR-0026 D102); this file is the
+# pattern list it consumes per D103. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar D (reply + conversation handling)
+#   - docs/PILLAR-PLAN.md §5 (the "no LLM in legal-liability path"
+#     constraint that pins unsubscribe = rule-based ONLY)
+#   - docs/adr/0025-pillar-d-foundation.md D97 (the load-bearing
+#     legal-liability invariant)
+#   - docs/adr/0026-pillar-d-rule-based-classifier.md D103 (this
+#     file's schema + location convention)
+#   - docs/SOURCES-OF-TRUTH.md row "Classifier pattern lists"
+#
+# Copy to ~/.outreach-factory/classifier/unsubscribe-patterns.yml and
+# edit. The classifier loads this file at construction time; changes
+# take effect on the next Pass G invocation (reconcile chain).
+#
+# Format
+# ------
+# - `version: 1` is REQUIRED. Future schema additions (per-pattern
+#   weights, per-language pattern sets) will bump the version through
+#   a Pillar B `policy/000N_add_classifier_pattern_*` migration —
+#   the file's version field gates compatibility.
+# - `patterns:` is a list of Python regex source strings. Each pattern
+#   is compiled with `re.IGNORECASE` automatically; the inline `(?i)`
+#   flag in the factory defaults is redundant but operator-clarifying
+#   (a reader sees case-insensitivity is intended).
+# - A malformed regex (anything `re.compile` rejects) raises
+#   `PatternLoadError` at load time — refuse-loud per ADR-0026 D103's
+#   bootstrap-failure-error contract. No silent skip.
+#
+# Pattern-set tuning
+# ------------------
+# The unsubscribe path is the legal-liability path (CAN-SPAM). Per the
+# asymmetric-failure-cost calculus in PILLAR-PLAN §0:
+#   - A MISSED unsubscribe (false-negative) is a CAN-SPAM violation —
+#     legal exposure on the operator's compliance posture.
+#   - A FALSE-POSITIVE unsubscribe is one missed conversation. In Week
+#     2 the auto-unsubscribe handler doesn't ship yet (Week 4-5
+#     delivery); operators see classified events in the ledger but
+#     no auto-suppression. From Week 4-5 onward, a false-positive
+#     classification triggers a write to the auto-unsubscribe.yml
+#     suppression file — the operator can manually rescind by
+#     editing the YAML, but the next dispatch will refuse.
+#
+# The defaults below are CONSERVATIVE — they catch the most-common
+# unsubscribe phrasings without false-positives on legitimate replies.
+# Operators in different verticals (B2B SaaS vs consumer apps vs
+# regulated industries) may see different reply phrasings; tune the
+# pattern set against your reply corpus.
+#
+# Adding a pattern
+# ----------------
+#   1. Sample real unsubscribe-flavored replies from your inbox.
+#   2. Identify the load-bearing phrase (the one a recipient would use
+#      to communicate "stop contacting me").
+#   3. Add a regex that matches the phrase. Use `\b` word boundaries
+#      to avoid partial-word matches (e.g., `\bunsubscribe\b` matches
+#      "please unsubscribe me" but NOT "unsubscribed yesterday").
+#   4. Test against your reply corpus (the future Pillar D Week 12
+#      100-message synthetic inbox benchmark will be the regression
+#      surface for the operator-tuned pattern set).
+#
+# Removing a pattern
+# ------------------
+# A pattern that produces false-positives MUST be tuned (made more
+# specific) or removed. Document the removal rationale in a Git
+# commit message + this file's comments — future-you should see WHY
+# a pattern was removed when sampling unsubscribe-flavored replies
+# that the classifier now misses.
+#
+# Inline comments per pattern
+# ---------------------------
+# Each pattern below carries a comment explaining what it matches +
+# any known-false-positive considerations. This is the operator's
+# audit surface for "why does our classifier work the way it does?"
+# — keep the comments updated when tuning.
+
+version: 1
+
+patterns:
+
+  # ----- 1. Direct unsubscribe verb -----
+  # The bare word "unsubscribe" is THE canonical signal. Word boundary
+  # prevents matching "unsubscribed" past-tense (rare; could be a
+  # reply discussing a prior unsubscribe). The (?i) is redundant
+  # given the classifier's re.IGNORECASE default but operator-clarifying.
+  - "(?i)\\bunsubscribe\\b"
+
+  # ----- 2. "unsub" shorthand -----
+  # Common in casual replies + footer instructions ("reply unsub").
+  # Word boundary protects against "unsubsidized" etc.
+  - "(?i)\\bunsub\\b"
+
+  # ----- 3. "remove me from your list" family -----
+  # Captures "remove me from your list", "remove me from your email
+  # list", "take me off your list", etc. The (?:email )? optional
+  # group allows the word "email" to be omitted (more common
+  # phrasing) or included (more formal).
+  - "(?i)\\bremove me from your (?:email |mailing |distribution )?list\\b"
+  - "(?i)\\btake me off your (?:email |mailing |distribution )?list\\b"
+
+  # ----- 4. "please stop" family -----
+  # Captures "please stop emailing me", "please stop contacting me",
+  # "please stop". The trailing word is captured to avoid matching
+  # innocuous phrases like "please stop by my office for coffee" —
+  # the second word MUST be one of {emailing, contacting, sending,
+  # writing}, AND optionally followed by "me".
+  - "(?i)\\bplease stop (?:emailing|contacting|sending|writing|messaging)( me)?\\b"
+
+  # ----- 5. "do not contact / email" family -----
+  # Direct imperative — operator-discouraging. Captures "do not
+  # contact me", "do not email me again", "do not write back". The
+  # trailing "( me)?( again)?" allows variation.
+  - "(?i)\\bdo not (?:contact|email|message|write) me( again)?\\b"
+  - "(?i)\\bdo not write back\\b"
+
+  # ----- 6. "opt out" / "opt-out" / "opt me out" -----
+  # Formal-style unsubscribe signal — common in regulated-industry
+  # replies. Handles "opt-out" / "opt out" / "opt me out" / "please
+  # opt me out" — the optional `(?:\s+me)?` group covers the
+  # imperative-with-pronoun form that the original `\bopt[- ]?out\b`
+  # missed. The `\bopt` word boundary still protects against
+  # "opting", "optimal", etc. (which don't end in `out`). Pattern
+  # tightened in the Pillar D Week 2 follow-up per the per-week
+  # reviewer's P2-A finding (test corpus included "opt me out" but
+  # the original regex couldn't match it — fixed here + the test
+  # corpus expanded + the invariant assertion tightened from `>= 1`
+  # to `== len(corpus)`).
+  - "(?i)\\bopt(?:\\s+me)?\\s*[- ]?out\\b"
+
+  # ----- 7. "stop emails / stop emailing / cease and desist" -----
+  # Direct imperative WITHOUT the "please" softener. Higher false-
+  # positive risk than "please stop emailing me" (someone might say
+  # "I had to stop emails for a vacation"), so the regex requires
+  # the verb to be in imperative position (line-start OR after a
+  # period+space OR after a newline — the classifier joins
+  # subject + body + snippet with newlines, so the body's
+  # first-word position is preceded by `\n`, not `^`).
+  - "(?im)(?:^|\\n|[.!?]\\s)(?:stop|cease) (?:emails|emailing|sending|messaging)\\b"
+
+  # ----- 8. "no more emails / no more messages" -----
+  # Common in casual replies. The "more" qualifier reduces false-
+  # positives ("no emails today" vs "no more emails ever").
+  - "(?i)\\bno more (?:emails|messages|outreach)\\b"
+
+  # ----- 9. "STOP" (SMS-style standalone) -----
+  # SMS convention — a single-word reply of "STOP" or "STOP." is the
+  # canonical unsubscribe. Requires the word to stand alone (^STOP$ at
+  # line boundaries) to avoid matching mid-sentence uses. The (?im)
+  # flags enable case-insensitive + multiline matching so `^` matches
+  # at line-start (not just string-start). Note: the classifier joins
+  # subject + body with `\n` before matching; if the subject alone is
+  # the word `STOP` the pattern fires even if the body is non-
+  # unsubscribe. In practice email subjects are virtually never a bare
+  # `STOP`; the edge is noted for operator transparency. Per Pattern 7's
+  # subject-body-join handling for parity.
+  - "(?im)^stop\\.?\\s*$"
+
+  # ----- 10. "leave me alone" -----
+  # Strong unambiguous signal — operator-discouraging language.
+  # Captures the canonical phrase + the "please leave me alone"
+  # softener variant.
+  - "(?i)\\bleave me alone\\b"
+
+  # ----- 11. "remove from mailing list" / "remove from distribution" -----
+  # Catches removal-imperative phrasings where the "your" is omitted.
+  # Useful for operators with multiple mailing lists ("remove from
+  # your newsletter list" + "remove from your launch list" both fire).
+  - "(?i)\\bremove (?:me )?from (?:the |your |this )?(?:mailing|distribution|email)\\b"
+
+  # ----- 12. "unsubscribe me" -----
+  # Imperative form of the unsubscribe verb. The bare "unsubscribe"
+  # in pattern 1 already matches, but this explicit form is here
+  # for documentation completeness — the regex engine short-circuits
+  # on the first match.
+  - "(?i)\\bunsubscribe me\\b"
+
+
+notes:
+  # This is a free-form notes field for operator-curated context. The
+  # classifier ignores it (only `version:` + `patterns:` are read).
+  # Use it to document:
+  #   - When the pattern set was last reviewed.
+  #   - Any vertical-specific patterns added/removed.
+  #   - Operator-side workflow for handling classifier output (until
+  #     Week 4-5's auto-unsubscribe handler ships, operators may
+  #     manually review classified events + append to suppression
+  #     YAML).
+  last_reviewed: "2026-05-23"
+  pillar: "D Week 2 (classifier bootstrap)"
+  notes: |
+    Factory defaults — conservative pattern set. Tuned for English-
+    language B2B cold-outreach context. Operators in other verticals
+    or languages should sample their reply corpus + extend.
+
+    Week 2 emits `reply_classified` events; the auto-unsubscribe
+    handler (Week 4-5 delivery per ADR-0025 D100) reads them and
+    writes to the suppression YAML. Until Week 4-5 ships, operators
+    can review classified events via:
+        python -m orchestrator.ledger grep --type reply_classified
+    and manually append confirmed unsubscribes to
+        ~/.outreach-factory/suppressions/suppressions.yml
+    per ADR-0004's existing schema.

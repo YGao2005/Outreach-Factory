@@ -1,0 +1,27 @@
+# Synthetic policy fixture for Pillar B replay tests.
+#
+# Mirrors the shape of config-template/cooldowns.example.yml — a
+# `version: 1` declaration plus a couple of representative cooldown
+# rules with comments preserved. The replay test verifies that
+# policy/0001_add_engine_compat_field surgically inserts the
+# engine_compat block and bumps version 1 → 2 without touching the
+# rules or comments below.
+
+version: 1
+
+rules:
+  # ---- Rule 1: never cold-pitch the same person twice. -----------------
+  - name: no-double-cold-pitch
+    type: cooldown.no-duplicate-register
+    block_when:
+      register: cold-pitch
+    reason: "Already cold-pitched this person"
+
+  # ---- Rule 2: follow-up requires a prior cold-pitch ≥7d ago. ----------
+  - name: followup-needs-prior-pitch
+    type: cooldown.requires-prior-register
+    block_when:
+      register: followup
+    required_register: cold-pitch
+    min_age_days: 7
+    reason: "follow-up too soon after cold-pitch"

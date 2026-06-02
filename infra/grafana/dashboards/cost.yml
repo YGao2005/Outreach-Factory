@@ -1,0 +1,140 @@
+# Pillar G Week 9 — cost dashboard
+# Per ADR-0057 D318 (Pillar G Week 9 — cost dashboard rendering +
+# per-source cost_incurred aggregation + Grafana panel + _SLO_NAMES
+# extension PUNT decision).
+#
+# Renders the operator's cost dashboard's binding question per
+# PILLAR-PLAN §2 Pillar G:
+#
+#   "Cost dashboard (Anthropic + Apollo + PDL + Reoon + Gmail quota)."
+#
+# Operators see per-source cost over the rolling window — the
+# per-call collect_cost_snapshots primitive returns the per-source
+# aggregation; this dashboard renders it via PromQL queries against
+# the OTel SDK's events_total ObservableCounter filtered by
+# event_class="cost_incurred".
+#
+# Pillar G Week 9 PUNTS on extending _SLO_NAMES with cost_burn_rate
+# per ADR-0057 D318 — operators wanting cost SLO alerting wire their
+# own Grafana alert rules on top of these panels (Grafana's alerting
+# framework operates on PromQL queries against the panel metrics).
+# The closed-set _SLO_NAMES stays tight to PILLAR-PLAN §2 Pillar G's
+# binding four (send_latency_p99 + reconcile_success_ratio +
+# bounce_rate + manual_override_count).
+#
+# Per ADR-0050 D276(d) Pillar G is single-tenant; per-tenant cost
+# attribution is deferred to Pillar I per RETRO-pillar-f.md item 8 +
+# ADR-0049 §Downstream pillar impact.
+
+apiVersion: 1
+title: "Outreach Factory — Cost dashboard"
+description: |
+  Pillar G observability — per-source cost dashboard per ADR-0057
+  D318. Renders per-source cost_incurred event rate + per-source
+  event count over the rolling window. Per PILLAR-PLAN §2 Pillar G
+  binding text: "Cost dashboard (Anthropic + Apollo + PDL + Reoon +
+  Gmail quota)." The seven currently-emitting cost sources per
+  COST_SOURCES_CATALOG: reoon (Reoon email verification) +
+  reply_classifier_llm (Anthropic LLM) + gmail (Gmail send) +
+  linkedin_invite / linkedin_dm (LinkedIn) + twitter_dm (Twitter) +
+  calendar_booking (Calendar).
+
+  Pillar I per-tenant audit-tooling extends with per-tenant cost
+  attribution at OSS bring-up.
+tags:
+  - outreach-factory
+  - pillar-g
+  - observability
+  - cost
+datasource: prometheus
+refresh: "60s"
+time:
+  from: "now-24h"
+  to: "now"
+
+panels:
+  - id: 1
+    title: "Per-source cost event rate (1h window)"
+    description: |
+      Per-source cost_incurred event rate via PromQL's rate() over
+      the per-event-class outreach_factory_events_total counter
+      filtered to cost_incurred (the cost emission grain per ADR-0006
+      §"Cost ledger contract" + ADR-0057 D314). Operators see
+      per-source spend cadence — a runaway dispatcher surfaces as a
+      rate spike on its source.
+    type: timeseries
+    gridPos: { x: 0, y: 0, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          rate(
+            outreach_factory_events_total{event_class="cost_incurred"}[1h]
+          )
+        legendFormat: 'cost {{channel}}'
+        format: time_series
+
+  - id: 2
+    title: "Per-source 24h cumulative cost event count"
+    description: |
+      Per-source 24h cumulative count of cost_incurred events. The
+      per-source breakdown is rendered via the per-channel attribute
+      (per ADR-0014 D33 channel-on-every-event invariant — the cost
+      events that carry channel surface here; the channel-less cost
+      events (reoon / reply_classifier_llm) surface under channel=
+      "none" via the OTel SDK's None→"none" attribute convention per
+      ADR-0052 D284). Operators consult the per-source dashboard to
+      decide where to tighten spend caps via the Pillar A budget
+      rules.
+    type: barchart
+    gridPos: { x: 0, y: 8, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (channel) (
+            increase(
+              outreach_factory_events_total{event_class="cost_incurred"}[24h]
+            )
+          )
+        legendFormat: '{{channel}}'
+        format: time_series
+
+  - id: 3
+    title: "Total cost events (24h rolling)"
+    description: |
+      Aggregate count of cost_incurred events over the rolling 24h
+      window. Operators see total spend cadence; per-source drill-down
+      surfaces in panel 2. Operators wanting cost SLO alerting wire
+      their own Grafana alert rule on this panel's PromQL query
+      (Week 9 PUNTS on extending _SLO_NAMES with cost_burn_rate per
+      ADR-0057 D318 — the closed-set stays tight to PILLAR-PLAN §2
+      Pillar G's binding four).
+    type: stat
+    gridPos: { x: 0, y: 16, w: 12, h: 6 }
+    targets:
+      - refId: A
+        expr: |
+          sum(
+            increase(
+              outreach_factory_events_total{event_class="cost_incurred"}[24h]
+            )
+          )
+        legendFormat: 'total cost events'
+        format: time_series
+
+# Pillar G Week 9 carry-forwards for future Pillar G weeks:
+#
+# - Week 10-11 (per-Person observability surface): the per-Person
+#   dashboard MAY extend with per-Person cost attribution (consumes
+#   cost_incurred.person_id via Ledger.all_events_for_person, NOT
+#   via this dashboard's per-source aggregation — the privacy
+#   invariant per I8 + ADR-0050 D276(b) holds at the per-Person
+#   ledger query surface, not the per-source dashboard).
+# - Week 12 (Stable flip): the binding exit-criterion test verifies
+#   operators answer the three binding questions via the overview
+#   dashboard + the cost dashboard + the funnel CLI in ONE
+#   invocation.
+# - Pillar I (OSS bring-up + multi-tenant): per-tenant cost
+#   attribution adds a per-tenant label to the cost metric +
+#   per-tenant dashboard folders.
+# - Pillar J (GDPR purge): per-Person cost events are subject to
+#   per-Person GDPR purge per ADR-0049 §Downstream pillar impact.

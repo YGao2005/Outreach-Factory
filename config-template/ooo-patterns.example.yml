@@ -1,0 +1,159 @@
+# Outreach-factory out-of-office (OOO) reply-pattern classifier rule list.
+#
+# This file is the operator-tunable source of truth for "is this an OOO
+# auto-reply or temporal-deferral signal?" decisions. Pillar D Week 3
+# (ADR-0027 D108-D110) extends the rule-based classifier to the OOO
+# category via this file's patterns. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar D (reply + conversation handling)
+#   - docs/adr/0027-pillar-d-long-tail-and-per-channel-reply-detection.md
+#     D108 (long-tail categories ship rule-based first; LLM fallback
+#     deferred to Week 6-8) + D110 (dispatch priority order — OOO
+#     evaluated SECOND after unsubscribe).
+#   - docs/SOURCES-OF-TRUTH.md row "Classifier pattern lists"
+#
+# Copy to ~/.outreach-factory/classifier/ooo-patterns.yml and edit.
+# The classifier loads this file at construction time; changes take
+# effect on the next Pass G invocation.
+#
+# Format
+# ------
+# - `version: 1` is REQUIRED. Future schema additions (per-pattern
+#   weights, per-language pattern sets) will bump the version through
+#   a Pillar B `policy/000N_add_classifier_pattern_*` migration.
+# - `patterns:` is a list of Python regex source strings. Each pattern
+#   is compiled with `re.IGNORECASE` automatically.
+# - A malformed regex raises `PatternLoadError` at load time per
+#   ADR-0026 D103 — refuse-loud bootstrap-failure contract.
+#
+# Failure-cost calculus for the OOO category
+# ------------------------------------------
+# The OOO category is NOT a legal-liability surface (unlike unsubscribe).
+# Pillar D Week 4-5+ uses the OOO classification as a temporal-deferral
+# signal — pause the prospect's pipeline until the OOO end-date passes
+# (extracted from the reply if structured, else operator-defined default
+# like "7 days"). Per PILLAR-PLAN §0's asymmetric-failure-cost calculus:
+#   - A MISSED OOO (false-negative) = the dispatcher may keep sending
+#     into a vacant inbox; the prospect's auto-reply queue grows; the
+#     operator's deliverability drifts slightly (no legal exposure).
+#     Cost: ONE extra follow-up that goes unread.
+#   - A FALSE-POSITIVE OOO = the prospect's pipeline pauses incorrectly
+#     for ~7 days; the prospect's response time perception worsens.
+#     Cost: SLOWER follow-up cadence on ONE prospect for ONE week.
+#
+# Both costs are RECOVERABLE — the prospect's manual reply lands the
+# pipeline back on the active cadence. The patterns below are
+# CONSERVATIVE to bias toward false-negatives (the safer side for OOO).
+#
+# Pattern-set tuning
+# ------------------
+# OOO replies follow a small vocabulary of standard phrasings (most
+# email clients ship default OOO templates: Gmail "Vacation responder",
+# Outlook "Automatic replies", etc.). The patterns below capture the
+# common templates' invariant phrases. Operators in regulated industries
+# may see formal phrasings ("OOO until DATE" with structured dates);
+# operators in startup verticals may see informal phrasings ("on PTO",
+# "off-grid for a week"). Tune the pattern set against your reply corpus.
+#
+# Inline comments per pattern
+# ---------------------------
+# Each pattern below carries a comment explaining what it matches +
+# any known-false-positive considerations.
+
+version: 1
+
+patterns:
+
+  # ----- 1. "out of office" / "out-of-office" (the canonical signal) -----
+  # The single most-reliable OOO marker. Gmail Vacation, Outlook Auto-
+  # Reply, and most third-party tools all stamp this phrase. The
+  # hyphenated form catches "out-of-office" as one token.
+  - "(?i)\\bout[ -]of[ -]office\\b"
+
+  # ----- 2. "OOO" / "OOTO" abbreviation -----
+  # Common in informal company replies. Word boundaries protect against
+  # "BOOO" / "ZOOO" (vanishingly unlikely but defensive). OOTO = "Out
+  # Of The Office" — corporate shorthand.
+  - "(?i)\\b(?:ooo|ooto)\\b"
+
+  # ----- 3. "on vacation" / "on PTO" / "on holiday" / "on leave" -----
+  # The "on <leave-status>" family. Common in informal replies. "PTO"
+  # = Paid Time Off (US corporate); "annual leave" (UK / EU); "holiday"
+  # (UK English for vacation). Captures the most-common variants
+  # without false-positives on innocuous phrases like "on the road"
+  # (different leading noun) or "on track" (no leave-status word).
+  - "(?i)\\bon (?:vacation|pto|holiday|leave|annual leave|sabbatical)\\b"
+
+  # ----- 4. "currently (away|out|unavailable|on leave)" -----
+  # The "currently <state>" family. Pre-positions the state-of-absence;
+  # common in auto-reply templates. Captures variation: "currently
+  # away", "currently out of the office", "currently unavailable",
+  # "currently on parental leave", etc. The `(?:.{0,30})?` allows a
+  # brief intervening clause ("I am currently away from my desk").
+  - "(?i)\\bcurrently (?:away|out|unavailable|on (?:vacation|pto|leave|sabbatical|holiday|parental leave|maternity leave|paternity leave))\\b"
+
+  # ----- 5. "I (will|am) be (out|away|back) (on|from) DATE" -----
+  # Temporal-explicit pattern naming a return date. The structure
+  # "will be (out|away)" + "back on/from DATE" is the load-bearing
+  # signal. False-positive risk on "I'll be back in a sec" (informal
+  # return-imminent phrasing); the `(?:until|on|from|the)` constraint
+  # forces a temporal anchor that "in a sec" lacks.
+  - "(?i)\\b(?:i'll be|i will be|i am|i'm) (?:out|away|back|off|on leave|on vacation|on pto)(?: of (?:the )?office)? (?:until|on|from|the|after|starting|through)\\b"
+
+  # ----- 6. "limited (access|email|connectivity)" -----
+  # Informal-business signal — operator is technically reachable but
+  # constrained. Common in conference / traveling auto-replies. Less
+  # certain than the canonical patterns; operators who want to be
+  # conservative may remove this row + accept the false-negative on
+  # the limited-access prospect family.
+  - "(?i)\\blimited (?:access|email access|connectivity|availability)\\b"
+
+  # ----- 7. "automatic (reply|response)" / "auto[- ]reply" -----
+  # Some auto-reply templates explicitly stamp the auto-reply marker.
+  # The matcher is intentionally narrow (the word "automatic" must
+  # qualify the reply, not other nouns).
+  - "(?i)\\b(?:automatic|auto[- ]?)(?:reply|response|responder)\\b"
+
+  # ----- 8. "be back (on|by|after|the) DATE" -----
+  # Return-date phrasing common in formal OOO templates ("I will be
+  # back on January 15"). The trailing `(?:on|by|after|the)` requires
+  # a temporal anchor; lone "be back" doesn't fire (would false-
+  # positive on "I'll be back to you tomorrow morning").
+  - "(?i)\\b(?:will be back|am back|i return)\\s+(?:on|by|after|the|in|next)\\b"
+
+  # ----- 9. "on parental leave" / "maternity" / "paternity leave" -----
+  # The parental-leave family — longer absences than vacation (often
+  # months). Operators may want to flag these distinctly from "on
+  # vacation" because the return-date is later AND the appropriate
+  # follow-up cadence is different (a 3-month parental-leave delay
+  # warrants a brand-new outreach approach, not a follow-up).
+  - "(?i)\\b(?:on |currently on )?(?:parental leave|maternity leave|paternity leave|maternity|paternity)\\b"
+
+  # ----- 10. "in a (meeting|conference) until" -----
+  # Short-duration absence ("in a conference until Friday"). Captures
+  # multi-day conference attendance which acts like OOO. The trailing
+  # "until" requires temporal anchor.
+  - "(?i)\\bin a (?:conference|meeting|workshop|retreat|offsite) until\\b"
+
+
+notes:
+  # This is a free-form notes field for operator-curated context. The
+  # classifier ignores it (only `version:` + `patterns:` are read).
+  last_reviewed: "2026-05-23"
+  pillar: "D Week 3 (long-tail categories)"
+  notes: |
+    Factory defaults — conservative pattern set. Tuned for English-
+    language B2B cold-outreach context. Operators in other verticals
+    or languages should sample their OOO reply corpus + extend.
+
+    Operators wanting LOWER false-negatives (catch more OOO at the
+    cost of more false-positives) may:
+      - Loosen pattern 6 ("limited access") to also match "limited
+        availability for the next two weeks".
+      - Add patterns for common typos / variants ("vacatoin",
+        "off office").
+      - Lower the `\b` word boundaries on patterns 2-3 to also catch
+        URL-embedded markers from email signature snippets.
+
+    Pillar D Week 6-8 ships an LLM fallback (ADR-0029 — TBD) for the
+    long-tail categories; non-matching replies in Weeks 3-5 fall
+    through to `uncategorized` per ADR-0026 D107.

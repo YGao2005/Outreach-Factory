@@ -1,0 +1,30 @@
+# Pillar J W3 (J3; ADR-0078 D390) — Dependabot dependency-update + vuln alerts.
+#
+# Covers the three pip manifests (orchestrator runtime, send-outreach skill
+# runtime, root dev deps) plus the GitHub Actions workflows. Dependabot opens
+# update PRs; the osv-scanner workflow (.github/workflows/osv-scanner.yml)
+# independently blocks on a known-vuln dependency. Together they are the
+# "zero unpatched CVEs > 14d" substrate proxy (human disposition of findings
+# is the v1-release gate per ADR-0076 D384, not a code assertion).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/orchestrator"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "pip"
+    directory: "/skills/send-outreach"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

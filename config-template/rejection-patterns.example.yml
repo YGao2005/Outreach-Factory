@@ -1,0 +1,174 @@
+# Outreach-factory rejection reply-pattern classifier rule list.
+#
+# This file is the operator-tunable source of truth for "did the
+# recipient signal a closing posture short of unsubscribe?"
+# decisions. Pillar D Week 3 (ADR-0027 D108-D110) extends the
+# rule-based classifier to the rejection category via this file's
+# patterns. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar D (reply + conversation handling)
+#   - docs/adr/0027-pillar-d-long-tail-and-per-channel-reply-detection.md
+#     D108 (long-tail categories ship rule-based first) + D110
+#     (dispatch priority order — rejection evaluated BEFORE interest
+#     so explicit closing wins over ambiguous positive language).
+#   - docs/SOURCES-OF-TRUTH.md row "Classifier pattern lists"
+#
+# Copy to ~/.outreach-factory/classifier/rejection-patterns.yml and
+# edit. The classifier loads this file at construction time; changes
+# take effect on the next Pass G invocation.
+#
+# Format
+# ------
+# - `version: 1` is REQUIRED.
+# - `patterns:` is a list of Python regex source strings.
+# - Each pattern is compiled with `re.IGNORECASE` automatically.
+# - A malformed regex raises `PatternLoadError` at load time per
+#   ADR-0026 D103.
+#
+# Failure-cost calculus for the rejection category
+# ------------------------------------------------
+# The rejection classification triggers a pipeline-state transition
+# (the prospect is `closed_lost` or similar in Pillar D's
+# conversation-state machine — TBD per ADR-0028 Week 4-5). Rejection
+# is DIFFERENT from unsubscribe — the recipient is not requesting
+# removal from the operator's list (no CAN-SPAM dimension), they're
+# declining the current proposal. The operator may legitimately
+# re-engage later with a different proposal. Per PILLAR-PLAN §0's
+# asymmetric-failure-cost calculus:
+#   - A MISSED rejection (false-negative) = the dispatcher keeps
+#     following up after the prospect declined; ANNOYANCE.
+#     Cost: ONE annoying follow-up.
+#   - A FALSE-POSITIVE rejection = the pipeline closes the prospect
+#     when they're still warm; the operator manually reviews + may
+#     re-open.
+#     Cost: ONE manual review.
+#
+# Both costs are RECOVERABLE. The patterns below are CONSERVATIVE.
+#
+# IMPORTANT: rejection is NOT unsubscribe. Operators MUST NOT route
+# rejection classifications to the auto-unsubscribe handler (per ADR-
+# 0025 D100 the handler only consumes `category=unsubscribe`). The
+# rejection signal informs pipeline-state, not suppression-list.
+#
+# Pattern-set tuning
+# ------------------
+# Rejection replies follow several distinct phrasings: explicit "no"
+# ("no thanks"; "not interested"), temporal-decline ("not now"; "not
+# at this time"), competitor-signal ("we just signed with X"; "we
+# went with another solution"), and budget/priority-decline ("we're
+# not in market"; "this isn't a priority"). The patterns capture all
+# four families.
+#
+# Inline comments per pattern
+# ---------------------------
+# Each pattern below carries a comment explaining what it matches +
+# any known-false-positive considerations.
+
+version: 1
+
+patterns:
+
+  # ----- 1. "not interested" / "no thanks" / "no thank you" -----
+  # The canonical explicit-rejection family. High-confidence signal.
+  # The word-boundary protects against compound words.
+  - "(?i)\\b(?:not interested|no thanks|no thank you|no, thanks|no, thank you|i'll pass|we'll pass|i'm good thanks|we're good thanks)\\b"
+
+  # ----- 2. "not (now|at this time|in market|a fit|a priority|right now)" -----
+  # The temporal/budget/priority decline family. "Not now" is the
+  # canonical soft-rejection. "Not a fit" is the polite-rejection.
+  # The trailing word constraint anchors specificity (lone "not"
+  # doesn't fire; would match too much innocuous text).
+  - "(?i)\\bnot (?:now|at this time|in (?:the )?market|a fit|a (?:good )?fit|a priority|right (?:now|at this time)|something we|in a position to|interested at this time|the right time|in our plans|on our roadmap)\\b"
+
+  # ----- 3. "(we|i) (just|recently) (signed|chose|went with|selected|picked) (with|another|a competitor)" -----
+  # The competitor-signal family — the prospect has committed
+  # elsewhere. High-confidence rejection signal. Captures "we just
+  # signed with [competitor]" + "we recently went with another
+  # solution" + "we picked another vendor" variants.
+  - "(?i)\\b(?:we|i)\\s+(?:just|recently|already)\\s+(?:signed|chose|went|picked|selected|committed|partnered|moved forward|landed|invested)\\b"
+
+  # ----- 4. "we (have|already have|use|are using) (a|our|an existing)" -----
+  # The existing-solution family — recipient indicates they have an
+  # incumbent. Common in vendor-evaluation contexts. The trailing
+  # qualifier ("a", "our", "an existing") anchors the signal.
+  - "(?i)\\bwe (?:have|already have|use|are using|currently use|are happy with)\\s+(?:a|an|our|the|an existing|our existing|a current|another)\\b"
+
+  # ----- 5. "we (don't|won't|aren't) (need|buying|purchasing|looking)" -----
+  # The negated-buying-intent family. Captures "we don't need this",
+  # "we aren't buying", "we won't be purchasing", "we aren't
+  # looking". The `(?:be\s+)?` allows the "be" auxiliary common with
+  # future-tense modals ("won't be purchasing", "will not be
+  # considering"). Trailing word constraint forces a buying-related verb.
+  - "(?i)\\bwe (?:don't|do not|won't|will not|aren't|are not|haven't|have not)\\s+(?:be\\s+)?(?:need|needing|buying|purchasing|looking|considering|exploring|evaluating|in market|in the market)\\b"
+
+  # ----- 6. "(maybe|perhaps) (later|next year|next quarter|in Q[1-4]|in the future)" -----
+  # The deferred-rejection family — the recipient signals interest at
+  # a future time but no current action. Moderate-confidence; treated
+  # as rejection because the current proposal is declined. Operators
+  # wanting a separate `deferred` category may split in their fork.
+  - "(?i)\\b(?:maybe|perhaps|possibly|potentially)\\s+(?:later|next year|next quarter|next month|in (?:q[1-4]|the future|a few months|six months|2027|the new year|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))\\b"
+
+  # ----- 7. "(circle|reach|touch) back (in|after|when|once|next)" -----
+  # The circle-back family — the recipient asks to be re-contacted
+  # later. Often follows "interesting but" patterns. Moderate-
+  # confidence rejection (the recipient is declining current
+  # follow-up). "Circle back next year" = effectively no. The
+  # trailing temporal-anchor set includes `next` for phrasings like
+  # "touch back next year" / "circle back next quarter".
+  - "(?i)\\b(?:circle|reach|touch|check|loop)\\s+back(?:\\s+(?:with|in|after|when|once|to|on|next))\\b"
+
+  # ----- 8. "(no|not) budget" / "out of budget" / "budget (constrained|frozen|cut)" -----
+  # The budget-rejection family. Common in formal corporate replies.
+  # Captures "no budget for this", "budget is frozen until Q1", "out
+  # of budget this year".
+  - "(?i)\\b(?:no budget|not in (?:our|the) budget|out of budget|budget (?:is )?(?:constrained|frozen|cut|tight|exhausted)|don't have (?:the )?budget)\\b"
+
+  # ----- 9. "isn't (a priority|on our roadmap|something we)" -----
+  # The deprioritized family. Common in formal corporate replies.
+  # The recipient explicitly states the proposal is not on the
+  # current agenda.
+  - "(?i)\\b(?:isn't|is not|aren't|are not)\\s+(?:a priority|on our roadmap|on the roadmap|something we're (?:looking at|considering|exploring)|in (?:our|the) plans|currently a focus)\\b"
+
+  # ----- 10. "please (do not|don't) follow up" -----
+  # The borderline-unsubscribe family. The recipient is requesting
+  # NO further outreach but isn't using the canonical unsubscribe
+  # phrases. NOT routed to the auto-unsubscribe handler (only
+  # `category=unsubscribe` is — per ADR-0025 D100); but the pipeline
+  # state should reflect the closing posture. Operators may want to
+  # MOVE this pattern to `unsubscribe-patterns.yml` if their compliance
+  # posture is conservative — moving the pattern across files is a
+  # one-line edit + the operator's deliberate choice.
+  - "(?i)\\bplease (?:do not|don't|won't|stop) (?:follow(?:ing)? up|reach(?:ing)? out|contact(?:ing)?|message|message me again|send|email me again)\\b"
+
+
+notes:
+  # Operator-curated context. The classifier ignores this field.
+  last_reviewed: "2026-05-23"
+  pillar: "D Week 3 (long-tail categories)"
+  notes: |
+    Factory defaults — conservative pattern set. Tuned for English-
+    language B2B cold-outreach context. Operators in other verticals
+    or languages should sample their rejection reply corpus + extend.
+
+    BORDERLINE-UNSUBSCRIBE CASES: Pattern 10 ("please do not follow
+    up") sits between unsubscribe + rejection. The default placement
+    in this file (rejection category) reflects the CONSERVATIVE
+    posture per the asymmetric-failure-cost calculus: a false-
+    positive rejection costs ONE manual review; a false-positive
+    unsubscribe would cost ONE missed conversation (recoverable but
+    requires operator-initiated re-engagement). Operators whose
+    compliance posture is conservative should MOVE the pattern to
+    `unsubscribe-patterns.yml` so the same text triggers auto-
+    suppression (Week 4-5+ when the handler ships).
+
+    Future Pillar D Week 6-8 (ADR-0029 — TBD) ships an LLM fallback
+    for the long-tail categories. The LLM may extract the rejection
+    reason (competitor / budget / fit / timing) for Pillar G's win/
+    loss dashboard (Pillar D Week 9-11).
+
+    Operators wanting LOWER false-negatives (catch more rejection
+    at the cost of more false-positives) may:
+      - Loosen pattern 6 ("maybe later") to also match "maybe in a
+        while".
+      - Add patterns for vertical-specific closing phrasings
+        ("we're sticking with X", "no plans to switch").
+      - Lower the buying-intent verb set in pattern 5.

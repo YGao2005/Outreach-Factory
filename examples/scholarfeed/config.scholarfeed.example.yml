@@ -1,0 +1,84 @@
+# Example tenant config — ScholarFeed
+#
+# Copy to ~/.outreach-factory/config.scholarfeed.yml, fill in your values, then
+# select it per invocation:
+#   export OUTREACH_FACTORY_CONFIG=~/.outreach-factory/config.scholarfeed.yml
+#
+# This mirrors config-template/config.example.yml and adds two blocks specific
+# to this worked tenant: `security.suppression_check` (the generic pre-send
+# unsubscribe gate, pointed at ScholarFeed's API) and `scholarfeed` (consumed
+# only by examples/scholarfeed/provision_trial_key.py).
+
+factory:
+  home: "~/code/outreach-factory"
+
+company:
+  name: "ScholarFeed"
+  one_liner: "a research-paper feed with LLM analysis for CS/AI researchers"
+  wedge_plain: |
+    a paper feed that reads new CS/AI papers for you and surfaces the few worth your time
+  wedge_analogy: |
+    basically a personalized arXiv that an LLM has already triaged for your research interests
+  wedge_failure_mode: |
+    the problem of drowning in 500 new arXiv papers a day and missing the 3 that matter to your work
+  website: "scholarfeed.org"
+
+founder:
+  name: "Your Full Name"
+  short_name: "Your"
+  intro_line: "I'm building ScholarFeed, a research-paper feed for CS/AI folks"
+  credibility_breadcrumb: |
+    a brief, true line establishing you actually work in this space
+  email: "operator@example.com"
+  footer_email: |
+    Your Name
+    Building scholarfeed.org
+    operator@example.com
+  about_path: ""
+
+vault:
+  path: "~/Documents/ScholarFeed Vault"
+  people_dir: "10 People"
+  companies_dir: "20 Companies"
+  conversations_dir: "40 Conversations"
+  lead_lists_dir: "60 Lead Lists"
+  queue_subdir: "🟦 Queue"
+  active_subdir: "🟧 Active"
+
+voice:
+  corpus_dir: "~/.outreach-factory/voice-corpus"
+  python_bin: "~/code/outreach-factory/.venv/bin/python3"
+  use_embedding_primitive: true
+  embed_model: "BAAI/bge-small-en-v1.5"
+  thresholds_path: "~/.outreach-factory/voice_thresholds.yml"
+
+email_enrich:
+  script_path: ""
+  reoon_key_path: ""        # or set $REOON_API_KEY in ~/.outreach-factory/.env
+  patterns:
+    - "{first}@{domain}"
+    - "{first}.{last}@{domain}"
+    - "{first}{last[0]}@{domain}"
+    - "{first[0]}{last}@{domain}"
+
+email_send:
+  gmail_api: true
+  sender_name: ""
+
+# CAN-SPAM footer + one-click unsubscribe + the generic pre-send suppression
+# gate (honors recipients who used the one-click List-Unsubscribe link).
+security:
+  physical_mailing_address: "Your Org, 123 Example St, City, ST 00000, USA"
+  unsubscribe_base_url: "https://scholarfeed.org/u"
+  unsubscribe_mailto: "mailto:unsubscribe@scholarfeed.org"
+  # Pre-send suppression check (optional). When url is set, each recipient is
+  # checked against this endpoint and skipped if they unsubscribed. The API
+  # secret is read from the named env var first, then the file path.
+  suppression_check_url: "https://api.scholarfeed.org/api/v1/suppression"
+  suppression_check_secret_env: "SCHOLARFEED_ADMIN_SECRET"
+  suppression_check_secret_path: ""
+
+# Consumed ONLY by examples/scholarfeed/provision_trial_key.py (trial-key mint).
+# The admin secret is read from $SCHOLARFEED_ADMIN_SECRET first, then this file.
+scholarfeed:
+  admin_secret_path: "~/.outreach-factory/scholarfeed_admin_secret.txt"

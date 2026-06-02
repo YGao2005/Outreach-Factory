@@ -1,0 +1,459 @@
+# Outreach-factory cooldown policy.
+#
+# This file is the source of truth for "may we send to this person right
+# now?" decisions about timing and prior-send constraints. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar A
+#   - docs/adr/0001-policy-engine-architecture.md
+#   - docs/adr/0002-cooldown-rules-and-timezone.md
+#   - docs/adr/0003-channel-as-first-class-policy-predicate.md
+#   - docs/adr/0005-sending-window-and-timezone-inference.md
+#   - docs/adr/0006-budget-rules-and-cost-events.md
+#   - docs/adr/0007-tier-rules-and-block-when-tier.md
+#
+# Copy to ~/.outreach-factory/policies/cooldowns.yml and edit. Doctor
+# preflight checks for its presence at install time.
+#
+# Format
+# ------
+# - `version: 1` is required; bumping requires a migration entry (Pillar B).
+# - Rules are evaluated in the order they appear — first Block wins
+#   (short-circuit). Order is load-bearing; see ADR-0001.
+# - Each rule has a `name` (audit identifier in ledger events), a `type`
+#   (discriminator into the rule registry — see orchestrator/policy/), a
+#   `block_when` filter that scopes when the rule applies, and rule-specific
+#   config.
+#
+# Time semantics
+# --------------
+# - Cooldown rules: age math in UTC; the recipient's timezone is NOT
+#   consulted. "≥7 days" means ≥168 hours of wall-clock UTC. DST transitions
+#   do not affect cooldown verdicts. (ADR-0002.)
+# - Sending-window rules: local-time-of-day and local-weekday in the
+#   *recipient's* timezone, inferred per-person from `identity_keys.country`
+#   with fallback to `America/Los_Angeles`. (ADR-0005.)
+# - The two regimes are complementary: cooldown asks "has enough wall-clock
+#   time passed since the last touch?"; sending-window asks "is it a
+#   reasonable hour at the recipient's location right now?" Both can refuse
+#   the same send for different reasons; rule order in this file determines
+#   which one logs the policy_blocked.
+
+version: 1
+
+rules:
+  # ---- Rule 1: never cold-pitch the same person twice. -----------------
+  - name: no-double-cold-pitch
+    type: cooldown.no-duplicate-register
+    block_when:
+      register: cold-pitch
+    reason: "Already cold-pitched this person"
+
+  # ---- Rule 2: follow-up requires a prior cold-pitch ≥7d ago. ----------
+  # Prevents the failure mode where a freshly-enrolled prospect gets a
+  # "checking back in" follow-up before any first touch landed.
+  - name: follow-up-requires-prior-cold-pitch
+    type: cooldown.requires-prior-send
+    block_when:
+      register: follow-up
+    requires_register: cold-pitch
+    min_age_days: 7
+    reason: "Follow-up requires a confirmed cold-pitch ≥7d ago"
+
+  # ---- Rule 3: re-engage requires the prospect be marked dormant. ------
+  # If the Person frontmatter doesn't say status: dormant, we refuse the
+  # re-engage send. ADR-0002 restrictive interpretation: unknown status
+  # → block.
+  - name: re-engage-requires-dormancy
+    type: cooldown.requires-person-status
+    block_when:
+      register: re-engage
+    required_status: dormant
+    reason: "Re-engage only for prospects marked dormant"
+
+  # ---- Rule 4: throttle per recipient domain for deliverability. -------
+  # ≥1 confirmed send to <domain> in the last 14 days → block. Protects
+  # against the spam-flag-cascade failure mode (Risk R008).
+  - name: domain-cooldown
+    type: cooldown.domain-throttle
+    block_when:
+      channel: email
+    max_count: 1
+    window_days: 14
+    reason: "≥1 prior send to this domain in 14d; throttling for deliverability"
+
+  # ---- Rule 5: cross-channel coordination — email touch suppresses LinkedIn.
+  # Activates when Pillar C lands LinkedIn send_confirmed events.
+  # See docs/adr/0003-channel-as-first-class-policy-predicate.md (rule
+  # class), docs/RISK-REGISTER.md R011 (the failure mode this mitigates).
+  # Until Pillar C ships, no LinkedIn events exist and this rule returns
+  # Allow() on every send — same idempotent shape as a fresh greenfield.
+  - name: cross-channel-email-suppresses-linkedin
+    type: cooldown.cross-channel-touch
+    block_when:
+      channel: linkedin
+    consider_channels: [email]
+    window_days: 14
+    reason: "Prior email touch within 14d; LinkedIn would look coordinated"
+
+  # ---- Rule 6: cross-channel coordination — LinkedIn touch suppresses email.
+  # Activates when Pillar C lands LinkedIn send_confirmed events.
+  # Mirror of Rule 5 in the opposite direction. Both ship together so
+  # R011 is mitigated by design from Pillar A v1 — Pillar C just wires
+  # the events the rules query against.
+  - name: cross-channel-linkedin-suppresses-email
+    type: cooldown.cross-channel-touch
+    block_when:
+      channel: email
+    consider_channels: [linkedin]
+    window_days: 14
+    reason: "Prior LinkedIn touch within 14d; email would look coordinated"
+
+  # ---- Rule 7 (commented): sending-window — recipient-local business hours.
+  # ADR-0005. Commented out by default because the right answer is operator-
+  # specific:
+  #   - B2B outreach: uncomment as written (09:00-17:00 recipient-local).
+  #   - Founder-to-founder warm intros: you might prefer the wider 08:00-20:00
+  #     range so a Sunday-evening send to a fellow founder is fine.
+  #   - Consumer / D2C outreach: a wider weekend-friendly window may be
+  #     appropriate.
+  # Country inference: recipient-tz comes from Person.identity_keys.country
+  # (with fallback to Person.location); when neither is set, the inference
+  # layer returns America/Los_Angeles. See orchestrator/policy/tz_inference.py.
+  #
+  # - name: business-hours-only
+  #   type: sending-window.local-time-of-day
+  #   block_when:
+  #     channel: email
+  #   start_local: "09:00"
+  #   end_local: "17:00"
+  #   reason: "Outside recipient's business hours (09:00-17:00 their local time)"
+
+  # ---- Rule 8 (commented): sending-window — recipient-local weekdays.
+  # ADR-0005. Same reasoning as Rule 7: appropriate for B2B, debatable for
+  # other registers. Uncomment if you want explicit weekend refusal in
+  # addition to (or instead of) the time-of-day window.
+  #
+  # - name: weekdays-only
+  #   type: sending-window.day-of-week
+  #   block_when:
+  #     channel: email
+  #   allowed_days: [mon, tue, wed, thu, fri]
+  #   reason: "Recipient's local day is a weekend"
+
+  # ---- Rule 9 (commented): budget window cap — total daily USD spend.
+  # ADR-0006. Commented out by default because the right threshold is
+  # operator-specific. The cap fires when the sum of cost_incurred events
+  # within the window meets-or-exceeds max_usd; at-threshold blocks
+  # (same convention as DomainThrottleRule).
+  #
+  # WARNING: budget rules consume `cost_incurred` events. Sources without
+  # populated pricing entries in COST_RATES_USD (orchestrator/policy/budget.py)
+  # emit amount_usd=0.0 — that means uncommenting this rule for an unpriced
+  # vendor will produce $0 sums and never block. The pricing table snapshot
+  # (ADR-0006 §Pricing table snapshot) lists which vendors are wired.
+  #
+  # Uncomment + adjust per your tolerance:
+  # - name: daily-apollo-cap
+  #   type: budget.window-cap
+  #   source: apollo               # filter to one source (omit to sum all)
+  #   window_hours: 24
+  #   max_usd: 50.0
+  #   reason: "Daily Apollo spend cap reached"
+
+  # ---- Rule 10 (commented): budget per-person cap — runaway enrichment guard.
+  # ADR-0006. Lifetime-cumulative per-person cap; once we've spent $1.00
+  # enriching alice-li we don't enrich her further regardless of when the
+  # spend occurred. Prevents the rediscovery-loop failure mode (the same
+  # person surfacing via three skills in one day burning Apollo credits
+  # for each rediscovery).
+  #
+  # - name: per-person-apollo-cap
+  #   type: budget.per-person-cap
+  #   source: apollo
+  #   max_usd: 1.0
+  #   reason: "Per-prospect Apollo spend cap reached"
+
+  # ---- Rule 11 (commented): budget per-run cap — bad-loop guard.
+  # ADR-0006. Bounds a single dispatcher batch's total spend. Defends
+  # against the "dispatcher in a bad loop" failure mode I7 names: a
+  # misbehaving run that's transitively burning credits cannot exhaust
+  # the daily budget.
+  #
+  # Set this conservatively — the reference operator's normal batch spends ~$5; $25 is a
+  # 5x safety margin. Operators with larger batches should tune up.
+  #
+  # - name: per-run-spend-cap
+  #   type: budget.per-run-cap
+  #   max_usd: 25.0
+  #   reason: "Single-run total spend cap reached"
+
+  # ---- Rule 12 (commented): tier gate for cold-pitch sends.
+  # ADR-0007. Blocks cold-pitches to prospects whose research_tier is
+  # not in the allowed set. The factory rule allows S + A only; tier-B
+  # prospects (and untiered notes — Person frontmatter without a
+  # `research_tier:` field) are refused on cold-pitch with reason
+  # "tier_unknown" or "tier_value not in [S, A]".
+  #
+  # Tier source: the send-gate reads `Person.research_tier:` from the
+  # frontmatter and populates `ctx.tier`. The OSS v1 hardcodes this
+  # source; a future policy.tier_field config knob will let operators
+  # point at `priority:` (P1/P2/P3) or a custom field. See ADR-0007
+  # §Decision item "Tier field source."
+  #
+  # Set-membership only — the rule does NOT know S > A > B. Operators
+  # write the set explicitly. ADR-0007 §Decision item "No tier
+  # ordering" — false-Allow on a low-tier prospect is the exact
+  # failure mode tier rules exist to prevent; set-membership refuses
+  # on typo, min-tier silently extends.
+  #
+  # - name: cold-pitch-tier-gate
+  #   type: tier.requires-tier-in
+  #   block_when:
+  #     register: cold-pitch
+  #   allowed_tiers: [S, A]
+  #   reason: "Cold-pitch allowed for tier S/A only"
+
+  # ---- Rule 12b (commented): LinkedIn weekly invite cap (100/week soft limit).
+  # ADR-0008 + ADR-0020. LinkedIn enforces a soft ~100/week invite cap on
+  # personal accounts; exceeding it risks the account being throttled /
+  # suspended (lost outreach surface, not just a single bad send — high
+  # blast radius).
+  #
+  # Migrated from the hardcoded LINKEDIN_WEEKLY_SOFT_LIMIT constant in
+  # send_queued.py per the Pillar A exit criterion "zero hardcoded policy
+  # in skills." See docs/adr/0008-linkedin-weekly-invite-cap.md +
+  # docs/adr/0020-pillar-c-per-channel-policy-migrations.md.
+  #
+  # Pillar C delivery: policy migration `0002_add_li_invite_weekly_cap`
+  # adds this rule to operator-installed `~/.outreach-factory/policies/
+  # cooldowns.yml` automatically. New operators copying this factory file
+  # can leave the rule commented + let the migration land it via doctor
+  # preflight + runner.apply(MigrationCategory.POLICY).
+  #
+  # Source field: `source: linkedin_invite` matches Pillar C Week 2's
+  # LinkedIn-invite dispatcher's cost_incurred emit value (per ADR-0015
+  # D40 — split-source convention distinguishes linkedin_invite from
+  # linkedin_dm). ADR-0008's original `source: linkedin` was pre-Pillar-C;
+  # Week 7's ADR-0020 §D77 reconciles operators who copied the factory
+  # before Week 7 (their `source: linkedin` rule fires on zero events;
+  # one-line manual edit fixes it; doctor preflight will warn in Pillar I).
+  #
+  # - name: linkedin-weekly-invite-cap
+  #   type: budget.window-cap
+  #   block_when:
+  #     channel: linkedin
+  #   source: linkedin_invite
+  #   window_days: 7
+  #   max_units: 100
+  #   reason: "LinkedIn weekly invite cap (100/wk soft limit per LinkedIn personal-account terms)"
+
+  # ---- Rule 12c (commented): LinkedIn weekly DM cap (operator-deliberate default).
+  # ADR-0016 + ADR-0021. LinkedIn does NOT publish a DM-specific soft cap, but
+  # account-level penalties on DM volume are observable + opaque + recipient-
+  # visible (recipients stop seeing notifications). Recovery from a DM-driven
+  # account flag is much slower than for invites because the failure mode is
+  # silent at the API surface (the MCP returns "success" even when delivery
+  # routes to the recipient's filtered / message-request inbox).
+  #
+  # Migrated to operator-installed cooldowns.yml by the policy/0003 migration
+  # per ADR-0021. The factory ships max_units: 50 as a conservative half-of-
+  # invite default; operators with established sender reputations tune up;
+  # operators in the warm-up phase tune down. See docs/adr/0021-pillar-c-
+  # linkedin-dm-weekly-cap.md §D79 for the asymmetric-failure-cost calculus.
+  #
+  # Source field: `source: linkedin_dm` matches Pillar C Week 3's LinkedIn-DM
+  # dispatcher's cost_incurred emit value (per ADR-0016 D43 — distinct from
+  # linkedin_invite per ADR-0015 D40's split-source convention). The channel
+  # field is `linkedin` because both invites + DMs share LinkedIn's account-
+  # level rate-limit pool; the per-action discrimination is the `source:`
+  # field.
+  #
+  # - name: linkedin-weekly-dm-cap
+  #   type: budget.window-cap
+  #   block_when:
+  #     channel: linkedin
+  #   source: linkedin_dm
+  #   window_days: 7
+  #   max_units: 50
+  #   reason: "LinkedIn weekly DM cap (conservative 50/wk default; LinkedIn doesn't publish an official DM cap — operator-tunable in cooldowns.yml)"
+
+  # ---- Rule 12d (commented): Twitter weekly DM cap (operator-deliberate default).
+  # ADR-0018 + ADR-0022. Twitter's enforcement surface differs from LinkedIn's:
+  # the more-common failure mode is the cookie-scrape MCP getting rate-limited
+  # (~10 calls/minute per ADR-0018 D59) — a recoverable failure (re-capture
+  # cookies; resume) rather than a multi-week account loss. But Twitter does
+  # ALSO enforce account-level penalties for high-volume cold outreach to
+  # filtered DM inboxes (recipients sending Message Requests without reciprocal
+  # engagement); the failure mode IS account-level when it triggers.
+  #
+  # Migrated to operator-installed cooldowns.yml by the policy/0004 migration
+  # per ADR-0022. The factory ships max_units: 50 matching Week 8's LinkedIn DM
+  # default for cross-channel consistency — both DM channels share similar
+  # cold-outreach intensity profiles + recipient-friction characteristics, so
+  # one default covers the median operator. Operators with established Twitter
+  # sender reputations tune up; operators in the warm-up phase tune down to
+  # ~25 to stay safely under the account-level threshold for filtered-DM
+  # cold outreach. See docs/adr/0022-pillar-c-twitter-dm-weekly-cap.md §D84
+  # for the cross-channel-consistency calculus.
+  #
+  # Source field: `source: twitter_dm` matches Pillar C Week 5's Twitter-DM
+  # dispatcher's cost_incurred emit value (per ADR-0018 D58 — distinct from
+  # linkedin_invite + linkedin_dm per ADR-0015 D40's split-source convention).
+  # The channel field is `twitter` (NOT linkedin) — Twitter has its own
+  # account-level rate-limit pool (cookie-scrape MCP per ADR-0018 D59 — distinct
+  # enforcement surface from LinkedIn MCP); the cross-channel rule's
+  # `consider_channels:` matches the string exactly, so the two channels are
+  # independent join targets.
+  #
+  # - name: twitter-weekly-dm-cap
+  #   type: budget.window-cap
+  #   block_when:
+  #     channel: twitter
+  #   source: twitter_dm
+  #   window_days: 7
+  #   max_units: 50
+  #   reason: "Twitter weekly DM cap (conservative 50/wk default; matches LinkedIn DM cap shape — Twitter cookie-scrape MCP rate-limit + filtered-DM inbox response profile; operator-tunable in cooldowns.yml)"
+
+  # ---- Rule 12e (commented): Calendar booking daily cap (operator-deliberate guardrail).
+  # ADR-0019 + ADR-0023. Calendar bookings have a FUNDAMENTALLY DIFFERENT
+  # failure-mode framing from Rules 12b-d above: Cal.com does NOT impose a
+  # platform-side daily cap on shared booking links. The cap mitigates an
+  # OPERATOR-SIDE runaway-loop failure mode — a dispatcher in a bad loop
+  # sharing 50 booking links in one batch run overwhelms the operator's own
+  # calendar surface (recipients booking overlapping slots; calendar
+  # saturation; reputational damage with recipients who can't get the slot
+  # they expected). Reading the comment: this cap protects YOU from a
+  # misbehaving send loop, NOT from the platform throttling you.
+  #
+  # The structurally adjacent existing rule is Rule 11 (commented per-run-
+  # spend-cap) — also a runaway-loop guard. Rule 12e is the per-channel
+  # daily-window equivalent for the Calendar booking dispatcher's link-share
+  # action.
+  #
+  # Migrated to operator-installed cooldowns.yml by the policy/0005 migration
+  # per ADR-0023. The factory ships max_units: 10 — calibrated against the reference operator's
+  # current ~3-5/day cadence with 2x-3x headroom for normal use + catches a
+  # dispatcher-in-bad-loop scenario at ~10x normal cadence. Operators with
+  # high booking volume (~15-20/day routinely) tune up; operators in the
+  # very-low-volume warm-up phase can tune down to 5. See docs/adr/0023-
+  # pillar-c-calendar-booking-daily-cap.md §D89 for the calibration math.
+  #
+  # Source field: `source: calendar_booking` matches Pillar C Week 6's
+  # Calendar-booking dispatcher's cost_incurred emit value (per ADR-0019 D65 —
+  # distinct from linkedin_invite + linkedin_dm + twitter_dm per ADR-0015
+  # D40's split-source convention). The cost event fires at INTENT-time (when
+  # the operator shares the link), so the cap counts link-shares — NOT
+  # confirmed bookings. Recipients booking is operator-positive; the cap
+  # shouldn't penalize the high-success-rate operator. See ADR-0023 §D91 for
+  # the intent-vs-confirmed counting semantic.
+  #
+  # The channel field is `calendar` (NOT linkedin / twitter) — Calendar
+  # bookings have their own enforcement surface (the operator's calendar,
+  # NOT a platform-side rate-limit pool); the cross-channel rule's
+  # `consider_channels:` matches the string exactly, so calendar is an
+  # independent join target.
+  #
+  # Window unit: `window_hours: 24` (NOT window_days: 7 like Rules 12b-d).
+  # Daily caps spell out hours; weekly caps spell out days; same convention
+  # as Rule 9 (commented Apollo daily cap). The engine accepts both forms
+  # equivalently per ADR-0006 §"Three concrete rule classes"; the hours form
+  # is the operator-readable choice for daily-window caps.
+  #
+  # - name: calendar-booking-daily-cap
+  #   type: budget.window-cap
+  #   block_when:
+  #     channel: calendar
+  #   source: calendar_booking
+  #   window_hours: 24
+  #   max_units: 10
+  #   reason: "Calendar booking daily cap (operator-deliberate guardrail against runaway link-sharing loops; Cal.com has NO platform-side daily cap — this default protects the operator's own calendar surface from saturation when a dispatcher loops on overlapping cohorts; 10/day default ≈ 2-3x normal cadence; operator-tunable in cooldowns.yml)"
+
+  # ---- Rule 12f (commented): reply-classifier LLM monthly cap (Pillar D Week 6-8 OPT-IN).
+  # ADR-0029 D127. Bounds the monthly call count for the OPT-IN LLM fallback
+  # classifier (`orchestrator.reply_classifier_llm.LLMFallbackClassifier`).
+  #
+  # Failure-mode framing differs from BOTH Pillar C's per-channel caps:
+  #   - NOT platform-side enforcement (Weeks 7-9: LinkedIn / Twitter account
+  #     limits). The Anthropic API has NO public per-call cap; the rate-limit
+  #     surface is operator-side spend tracking.
+  #   - NOT operator-side runaway loop on the operator's own surface (Week 10:
+  #     Cal.com calendar saturation). The cap mitigates an OPERATOR-SIDE budget
+  #     concern: LLM spend tracking + runaway-call protection (e.g., a spam
+  #     wave triggering the LLM fallback on hundreds of uncategorized replies
+  #     in a single reconcile run).
+  #   - Recipient-side perception (Week 11: cross-channel) does NOT apply —
+  #     the LLM classification is framework-internal; recipients don't see it.
+  #
+  # Migrated to operator-installed cooldowns.yml by the policy/0007 migration
+  # per ADR-0029 D127. The factory ships `max_units: 50` calibrated against
+  # the reference operator's expected ~30 long-tail uncategorized replies/month with 1.5-2.5x
+  # safety margin. At Haiku 4.5 rates (~$0.0006/call), 50 calls/month ≈
+  # $0.03/month — the cap's role is operator visibility into LLM spend +
+  # runaway-call protection, not budget protection per se. Operators with
+  # higher reply volume tune up; warm-up phase operators tune down.
+  #
+  # Source field: `source: reply_classifier_llm` matches Pillar D Week 6-8's
+  # `LLMFallbackClassifier.classify` cost-event emit value (per ADR-0029 D126
+  # + ADR-0025 §I7's reservation). NO `block_when.channel:` — LLM calls are
+  # channel-agnostic (the classifier runs against reply events from every
+  # channel uniformly per Pass G's `REPLY_EVENT_TYPES` closed-set).
+  #
+  # Window unit: `window_days: 30` (monthly). Distinct from Weeks 7-9's
+  # `window_days: 7` weekly AND Week 10's `window_hours: 24` daily. Per
+  # ADR-0029 D127 — operators budget LLM spend in monthly terms.
+  #
+  # Mode: `max_units: 50` (units = call count; one unit per LLM call).
+  # Operators wanting a $-based cap configure `max_usd: <amount>` instead;
+  # the engine accepts both modes per ADR-0006 §"Mode selection".
+  #
+  # OPT-IN at the wiring layer too. Pass G accepts a `RuleBasedClassifier`
+  # by default; the `LLMFallbackClassifier` is constructed at the wiring
+  # site (Pillar I CLI surface). Operators who DON'T enable the LLM
+  # fallback don't see this cap fire (no cost_incurred events with
+  # source=reply_classifier_llm land in their ledger).
+  #
+  # Defense-in-depth: operators wanting a per-run cap (bounds spend within
+  # one reconcile invocation, defending against runaway-loop within-batch
+  # scenarios) can ADDITIONALLY ship a `BudgetPerRunCapRule` rule via the
+  # existing rule class (no migration needed; uses ADR-0006's existing
+  # surface).
+  #
+  # - name: reply-classifier-llm-monthly-cap
+  #   type: budget.window-cap
+  #   source: reply_classifier_llm
+  #   window_days: 30
+  #   max_units: 50
+  #   reason: "Reply-classifier LLM monthly call cap (≈$0.03/month at Haiku 4.5 rates; operator-tunable in cooldowns.yml)"
+
+  # ---- Rule 13 (commented): tier-scoped budget cap (CROSS-CUTTING EXAMPLE).
+  # ADR-0007 §Cross-cutting `block_when:` extension. The shared
+  # _block_when_matches helper accepts `tier:` (exact-match) and
+  # `tier_in:` (set-membership) keys, so every existing rule class
+  # (cooldown / suppression / sending-window / budget / cross-channel)
+  # can scope by tier without per-class code changes.
+  #
+  # The example below variant-scopes a budget.window-cap rule to ONLY
+  # apply when the recipient is tier S — letting operators express
+  # "premium prospects get a wider Apollo budget than the others":
+  #
+  # - name: tier-s-extra-apollo-cap
+  #   type: budget.window-cap
+  #   block_when:
+  #     register: cold-pitch
+  #     tier: S                     # exact match on ctx.tier
+  #   source: apollo
+  #   window_hours: 24
+  #   max_usd: 100.0                # higher than the global cap
+  #   reason: "Tier-S daily Apollo cap reached"
+  #
+  # The `tier_in:` variant uses a list — same exact-match semantics
+  # but on a set:
+  #
+  # - name: tier-sa-budget-window
+  #   type: budget.window-cap
+  #   block_when:
+  #     register: cold-pitch
+  #     tier_in: [S, A]
+  #   source: pdl
+  #   window_days: 7
+  #   max_usd: 75.0
+  #   reason: "Tier S/A weekly PDL cap reached"

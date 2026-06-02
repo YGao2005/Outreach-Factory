@@ -1,0 +1,41 @@
+# Golden-path persona — TRAINING tenant (gates + voice corpus calibrated here).
+# The send target is ALWAYS a controlled loopback; the prospect email uses the
+# RFC-2606 .example TLD (guaranteed non-routable) so no automated run can spam.
+tenant_id: aiyara
+held_out: false
+
+identity:
+  founder_name: Alex Founder              # synthetic operator (loopback-only fixture)
+  from_email: operator@aiyara.example     # RFC-2606 .example TLD; never routable
+  company: Aiyara
+  one_liner: agent failure monitoring for production AI agents
+
+# Per-tenant pipeline TOPOLOGY (stage list is data, not hardcoded).
+pipeline:
+  - discover        # find-funded-founders shape
+  - research
+  - draft           # register-aware cold-pitch
+  - send            # email (+ optional LinkedIn invite)
+  - reconcile
+  - handle_reply
+
+register: cold-pitch
+loopback_to: ${GOLDEN_PATH_LOOPBACK_TO}   # controlled inbox you own; never a prospect
+
+# Frozen synthetic target (recorded; no live scraping per run).
+prospect:
+  name: Dana Reyes
+  title: Co-founder & CTO
+  company: Loopwell
+  email: dana@loopwell.example
+  signal: "raised $4M seed for autonomous customer-support agents (7 days ago)"
+
+recorded_research_fixture: fixtures/research_aiyara_yang.json
+recorded_reply: "Interesting — we've had agents go sideways in prod. How is this different from Langfuse?"
+expected_reply_class: interest
+
+# L1 quality oracle: human-ratified golden draft. A prose diff requires sign-off.
+golden_draft: goldens/aiyara_yang.draft.md
+
+# Outcome signal for L3 (longitudinal). Aiyara = reply-based.
+outcome_signal: positive_reply

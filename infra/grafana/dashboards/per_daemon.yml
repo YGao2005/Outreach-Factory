@@ -1,0 +1,406 @@
+# Pillar H Week 4 + Week 6 + Week 6 follow-up + Week 7 + Week 7 follow-up + Week 9 + Week 10-11 — per-pillar-H Grafana dashboard
+# (Week 7 ships dispatch wiring per ADR-0066 D358; the Iteration 6b body
+# now does `async with sem: await dispatch_fn(stage)` so production
+# saturation IS possible at Week 7 commit when concurrent per-stage
+# dispatches hold semaphore slots. Pillar H Week 7 follow-up P3-3
+# closure bumped this header to name Week 7's actual-dispatch landing.
+# Pillar H Week 9 per ADR-0067 D363 — adds Panel #6 rendering the
+# per-event-class index age via `time() -
+# outreach_factory_daemon_index_last_updated_timestamp` ObservableGauge
+# registered at init_daemon Step 9.5 via
+# observability.register_daemon_index_observable_gauge; the panel goes
+# RED when age > 60s — operator SLO signal for invalidation stalls per
+# ADR-0067 D362's per-Ledger.append invalidation contract.)
+# Per ADR-0063 D347 (Pillar H Week 4 — serve_health_endpoint body +
+# health_probe rate-limit per R038 + build_health_probe_payload
+# factory + per-pillar-H Grafana panel) + ADR-0060 D332's per-week
+# trajectory table (Week 4 ships the Grafana panel; Week 6 wires
+# panel 2's actual `daemon_stage_saturated` event class per ADR-0065
+# D355 — the placeholder `or vector(0)` no longer fires once Week 7+
+# actual per-stage dispatch begins saturating Semaphores; Week 6
+# follow-up corrects the carry-forwards-section Week-5-attribution
+# drift below + updates the panel 4 "FIVE → SIX" docstring drift
+# per the W6 follow-up P3-8 closure).
+#
+# Follows the Pillar G Week 4 `overview.yml` precedent + the Pillar G
+# Week 10-11 `per_person.yml` per-pillar-locality convention. Operators
+# navigate per-pillar tabs in Grafana to see the daemon's lifecycle +
+# parallelism + probe-rate + catalog + uptime panels.
+#
+# Renders the operator's per-pillar-H health concerns:
+#
+#   1. Daemon lifecycle transitions — how often does the daemon
+#      restart? Operators query the per-week `daemon_started` /
+#      `daemon_stopping` / `daemon_stopped` rate over the 1h window
+#      via PromQL's rate() function.
+#   2. Per-stage parallelism saturation — is the per-stage worker
+#      pool at-limit? (Week 4 placeholder; Week 6+ wires actual
+#      saturation event class.)
+#   3. Health probe event rate — is the R038 rate-limit functioning?
+#      A k8s readiness probe at 10s cadence + the default 30s
+#      rate-limit caps emits at ~120 events/hour per single-tenant.
+#   4. Per-event-class catalog count — what's the daemon emitting?
+#      Per-event-class 24h cumulative counts across the SIX Pillar
+#      H event classes (daemon_started + daemon_stopping +
+#      daemon_stopped + policy_reloaded + health_probe +
+#      daemon_stage_saturated; Pillar H Week 6 follow-up P3-8 closure
+#      updates the prior "FIVE" docstring drift — Week 6 added the
+#      sixth via ADR-0065 D355).
+#   5. Daemon uptime — how long has the daemon been running? The
+#      structural commitment to PILLAR-PLAN §2 Pillar H's 24h
+#      uptime exit criterion.
+#   6. Per-event-class index age (Pillar H Week 9 NEW per ADR-0067
+#      D363) — is the daemon's per-event-class index per ADR-0067
+#      D362 staying fresh? Computed as `time() -
+#      outreach_factory_daemon_index_last_updated_timestamp`; goes
+#      RED if age > 60s. A non-trivial age signals invalidation
+#      stalls (the observer registration silently broke OR the
+#      daemon stopped receiving appends); operators investigate via
+#      `ledger tail` + daemon stderr for observer-failure logs.
+#   7. Daemon exit_reason distribution (Pillar H Week 10-11 NEW per
+#      ADR-0068 D364-D366 + ADR-0062 D344) — what fraction of daemon
+#      shutdowns are clean vs timeout vs crash? Per-exit_reason 24h
+#      cumulative counts via PromQL's increase() function with the
+#      `exit_reason` label dimension. A non-zero `crash` count signals
+#      the W10-11 crash-recovery synthesis fired at next daemon startup
+#      (the synthesized `daemon_stopped(exit_reason="crash",
+#      _recovered_by="reconcile")` event landed in the ledger).
+#      Operators investigate crashes via the per-daemon process
+#      stderr + the per-event-class index for the synthesized event's
+#      `_recovered_for_pid` to correlate against the prior daemon's
+#      lifecycle events.
+#
+# This YAML is a high-level operator-readable description of the
+# dashboard structure — future Grafana-provisioning code (or a
+# manual import into Grafana) consumes this format per the Pillar G
+# Week 4 `overview.yml` convention.
+
+apiVersion: 1
+title: "Outreach Factory — Pillar H Daemon"
+description: |
+  Pillar H Week 4 + Week 6 + Week 9 + Week 10-11 per-pillar-H
+  dashboard. Renders the daemon lifecycle transitions over time +
+  per-stage parallelism saturation + health probe event rate +
+  per-event-class catalog count + daemon uptime + per-event-class
+  index age + daemon exit_reason distribution per ADR-0063 D347 +
+  ADR-0060 D335's FOUR load-bearing invariants + ADR-0065 D355's
+  per-stage backpressure surface (panel 2 placeholder consumer
+  goes live at Week 6 commit; production saturation lands at Week
+  7+'s actual per-stage dispatch) + ADR-0067 D362-D363's per-
+  event-class index invalidation contract + operator-visible
+  freshness gauge (Week 9 NEW Panel #6) + ADR-0068 D364-D366's
+  crash-recovery synthesis surface (Week 10-11 NEW Panel #7
+  rendering `daemon_stopped` exit_reason distribution per
+  ADR-0062 D344's pre-reserved closed-set). Operators navigate the
+  per-pillar-H tab in Grafana to see the daemon's per-week-4 +
+  per-week-6 + per-week-9 + per-week-10-11 observability surface.
+tags:
+  - outreach-factory
+  - pillar-h
+  - daemon
+datasource: prometheus
+refresh: "30s"
+time:
+  from: "now-1h"
+  to: "now"
+
+panels:
+  - id: 1
+    title: "Daemon lifecycle transitions (1h window)"
+    description: |
+      Per ADR-0063 D347 panel 1 — daemon restart cadence + graceful-
+      shutdown frequency. The per-event-class rate over 1h via
+      PromQL's rate() function (cumulative-counter semantics per
+      ADR-0052 D285). Operators see how often the daemon restarts
+      (daemon_started) + when graceful shutdowns trigger
+      (daemon_stopping → daemon_stopped). A healthy daemon shows
+      sparse daemon_started events (one per process restart) with
+      paired daemon_stopping/daemon_stopped events on planned
+      shutdowns.
+    type: timeseries
+    gridPos: { x: 0, y: 0, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          rate(outreach_factory_events_total{
+            event_class=~"daemon_(started|stopping|stopped)"
+          }[1h])
+        legendFormat: '{{event_class}}'
+        format: time_series
+
+  - id: 2
+    title: "Per-stage parallelism saturation (Week 6+)"
+    description: |
+      Per ADR-0063 D347 panel 2 — per-stage worker pool saturation
+      indicator. Week 4 ships the panel with the placeholder query
+      (returns zero at Week 4 because the per-stage worker pool body
+      lands at Week 5+ per ADR-0060 D332). Week 6 extends with the
+      actual saturation event class per the per-stage backpressure
+      body. A non-zero value indicates the per-stage worker pool is
+      at-limit + backpressure is engaged.
+    type: stat
+    gridPos: { x: 0, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          outreach_factory_events_total{
+            event_class="daemon_stage_saturated"
+          } or vector(0)
+        legendFormat: 'saturation'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "short"
+        thresholds:
+          mode: absolute
+          steps:
+            - color: green
+              value: null
+            - color: red
+              value: 1
+
+  - id: 3
+    title: "Health probe event rate (1h window)"
+    description: |
+      Per ADR-0063 D347 panel 3 — health probe event emission rate.
+      Operators verify the R038 rate-limit is functioning: a k8s
+      readiness probe at 10s cadence + the default
+      `health_probe_rate_limit_seconds=30` caps emits at ~120
+      events/hour per single-tenant operator. A higher rate indicates
+      the rate-limit is operator-overridden to 0 (per-request emits)
+      OR the probe cadence is faster than expected.
+    type: timeseries
+    gridPos: { x: 12, y: 8, w: 12, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          rate(outreach_factory_events_total{
+            event_class="health_probe"
+          }[1h])
+        legendFormat: 'health_probe rate'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "ops"
+
+  - id: 4
+    title: "Per-event-class catalog count (24h cumulative)"
+    description: |
+      Per ADR-0063 D347 panel 4 — per-event-class 24h cumulative
+      counts across the SIX Pillar H event classes per ADR-0061
+      D338's + ADR-0065 D355's EVENT_CLASS_CATALOG extensions
+      (daemon_started + daemon_stopping + daemon_stopped +
+      policy_reloaded + health_probe + daemon_stage_saturated).
+      Operators inspect the per-event-class accumulation to
+      understand the daemon's lifecycle activity surface across
+      the rolling 24h window via PromQL's increase() function.
+      Pillar H Week 6 follow-up P3-8 closure: the prior "FIVE"
+      docstring was frozen at the W4 commit + did not update at
+      the W6 catalog extension; the PromQL regex
+      `daemon_.*|health_probe|policy_reloaded` already matches
+      the new `daemon_stage_saturated` event class (no query
+      change needed; the docstring drift was the operator-facing
+      visibility gap).
+    type: barchart
+    gridPos: { x: 0, y: 16, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (event_class) (
+            increase(outreach_factory_events_total{
+              event_class=~"daemon_.*|health_probe|policy_reloaded"
+            }[24h])
+          )
+        legendFormat: '{{event_class}}'
+        format: time_series
+
+  - id: 5
+    title: "Daemon uptime (current)"
+    description: |
+      Per ADR-0063 D347 panel 5 — daemon uptime in seconds since the
+      most recent `daemon_started` event. The structural commitment
+      to PILLAR-PLAN §2 Pillar H exit criterion (24h-duration zero-
+      anomaly run; the daemon MUST NOT restart unexpectedly).
+      Operators query this to verify the daemon's uptime SLO target
+      (24h between restarts). Computed as `time() - max(daemon_started
+      timestamp)`; surfaces the uptime in seconds.
+    type: stat
+    gridPos: { x: 0, y: 24, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          time() - max(
+            timestamp(
+              outreach_factory_events_total{event_class="daemon_started"}
+            )
+          )
+        legendFormat: 'uptime'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "s"
+        thresholds:
+          mode: absolute
+          steps:
+            - color: red
+              value: null
+            - color: orange
+              value: 3600    # 1h — operator-deliberate warning threshold
+            - color: green
+              value: 86400   # 24h — Pillar H exit criterion SLO target
+
+  - id: 6
+    title: "Per-event-class index age (Week 9)"
+    description: |
+      Per ADR-0067 D363 (W9 extension to ADR-0067 per ADR-0060 D336)
+      — the daemon's per-event-class index freshness as an operator
+      SLO signal. Rendered as `time() -
+      outreach_factory_daemon_index_last_updated_timestamp` per the
+      Prometheus absolute-time gauge convention. The gauge is set
+      at daemon startup by `init_daemon` Step 8 materialization +
+      advanced on every subsequent `Ledger.append` via the
+      per-event-class index invalidation observer per ADR-0067 D362.
+      A non-trivial age signals invalidation stalls — operators
+      investigate via `ledger tail` (verify recent appends ARE
+      hitting the daemon's Ledger instance) + daemon stderr (search
+      for `ledger post-append observer ... raised` log lines from
+      the W9 observer-failure best-effort posture). Operationally,
+      v1 single-tenant operators should see this stay sub-second
+      under normal daemon load; the RED 60s threshold catches the
+      observer-registration-silently-broke failure mode (the
+      W9 follow-up reviewer's pre-identified weak-spot category for
+      this panel).
+    type: stat
+    gridPos: { x: 0, y: 32, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          time() - outreach_factory_daemon_index_last_updated_timestamp
+        legendFormat: 'index age'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "s"
+        thresholds:
+          mode: absolute
+          steps:
+            - color: green
+              value: null
+            - color: orange
+              value: 30     # 30s — invalidation observer SHOULD fire faster than this
+            - color: red
+              value: 60     # 60s — invalidation stall SLO threshold per ADR-0067 D363
+
+  - id: 7
+    title: "Daemon exit_reason distribution (Week 10-11)"
+    description: |
+      Per ADR-0068 D364-D366 (W10-11 crash recovery hardening per
+      ADR-0060 D335 invariant 2) + ADR-0062 D344's pre-reserved
+      DAEMON_EXIT_REASONS closed-set — daemon shutdown distribution
+      across the THREE exit reasons (`clean` / `timeout` / `crash`).
+      The W3 commit pre-reserved `"crash"` for the W10-11 trajectory;
+      the W10-11 commit operationally lands the
+      `_recover_from_prior_crash` synthesis at `init_daemon` Step 4.5
+      which fires when the ledger contains a `daemon_started(pid=P)`
+      event without a matching `daemon_stopped(pid=P)` event.
+      Operators see:
+
+      * Clean shutdowns (graceful drain completed within
+        `graceful_shutdown_seconds`) — green; expected operator-
+        initiated path.
+      * Timeout shutdowns (drain exceeded deadline; in-flight tasks
+        cancelled; process exits with code 124) — orange; per-stage
+        worker pool MAY be over-subscribed at the deadline.
+      * Crash recoveries (synthesized at next startup; process exit
+        was NOT graceful — `kill -9` / OOM / segfault / power loss) —
+        RED; operator investigates the prior daemon process via the
+        synthesized event's `_recovered_for_pid` field + correlates
+        against the operator-visible PID's lifecycle events in the
+        ledger.
+
+      Aggregation over the 24h window via PromQL's `increase()`
+      function with the `exit_reason` label dimension — the
+      Pillar G OTel SDK at `observability.py` emits the
+      `outreach_factory_events_total` counter labeled by
+      `event_class` + the payload fields per ADR-0052 D283-D285's
+      per-event-class label convention; the `exit_reason` is one
+      such payload field for `event_class="daemon_stopped"`.
+    type: barchart
+    gridPos: { x: 0, y: 40, w: 24, h: 8 }
+    targets:
+      - refId: A
+        expr: |
+          sum by (exit_reason) (
+            increase(outreach_factory_events_total{
+              event_class="daemon_stopped"
+            }[24h])
+          )
+        legendFormat: '{{exit_reason}}'
+        format: time_series
+    fieldConfig:
+      defaults:
+        unit: "short"
+        thresholds:
+          mode: absolute
+          steps:
+            - color: green
+              value: null
+            - color: red
+              value: 1      # 1 crash = RED operator SLO signal per ADR-0068 D364
+
+# Pillar H Week 4 carry-forwards for future Pillar H weeks (Pillar
+# H Week 6 follow-up P3-8 closure: the prior carry-forwards section
+# attributed `daemon_stage_saturated` to Week 5; the actual landing
+# was Week 6 per ADR-0065 D355 + the per-pillar-week trajectory at
+# ADR-0060 D332 — the W6 follow-up corrects the attribution below;
+# Pillar H Week 9 extends the carry-forwards with the W8-9 actual
+# landing of the per-event-class index panel #6 per ADR-0067 D363):
+#
+# - Week 5 (DaemonRunner.run body + per-stage worker pool SKELETON):
+#   ships the body that consumes per-stage Semaphores at Step 6 +
+#   the per-observability-stage span loop via `observability.traced_stage`;
+#   NO `daemon_stage_saturated` event class yet (Week 6 ships it).
+# - Week 6 (per-stage worker pool ACTUAL parallelism per ADR-0065
+#   D353-D355): adds the `daemon_stage_saturated` event class to
+#   wire panel 2 + the per-funnel-stage `asyncio.Semaphore` bounded
+#   by `DaemonConfig.parallelism_limits` + the
+#   `build_daemon_stage_saturated_payload` factory; the panel 2
+#   placeholder `or vector(0)` no longer fires once Week 7+ actual
+#   per-stage dispatch begins saturating Semaphores.
+# - Week 7 (reload_policy body + SIGHUP): adds a per-policy-reload
+#   panel showing the `policy_reloaded` event rate + the prior +
+#   new content hash diff visualization.
+# - Week 8 (per-event-class index materialization at startup per
+#   ADR-0067 D359-D361): ships the EventClassIndex +
+#   PersonEventIndex mutable holders + _materialize_indexes
+#   single-walk helper + init_daemon Step 8 wiring. No new panel
+#   at Week 8 (the panel is index-age + ships at Week 9).
+# - Week 9 (per-event-class index invalidation on Ledger.append
+#   per ADR-0067 D362 + freshness gauge per ADR-0067 D363):
+#   ADDED Panel #6 above rendering `time() -
+#   outreach_factory_daemon_index_last_updated_timestamp` per the
+#   observable gauge registered at
+#   observability.register_daemon_index_observable_gauge at
+#   init_daemon Step 9.5. The gauge is set at materialization
+#   (Step 8) + advanced on every Ledger.append via the
+#   per-event-class index invalidation observer per ADR-0067 D362
+#   installed at init_daemon Step 8.5.
+# - Week 10-11 (crash recovery hardening per ADR-0068 D364-D366):
+#   ADDED Panel #7 above rendering the `daemon_stopped` event's
+#   exit_reason distribution (clean / timeout / crash) per ADR-0062
+#   D344's pre-reserved closed-set + ADR-0014 D33 crash-recovery
+#   synthesis at `init_daemon` Step 4.5 via NEW
+#   `_recover_from_prior_crash` helper. The helper synthesizes
+#   `daemon_stopped(exit_reason="crash", _recovered_by="reconcile")`
+#   events for any prior daemon_started events lacking matching
+#   daemon_stopped events (matched by PID); the R032 synthetic-event
+#   exclusion per ADR-0056 D311's `_recovered_by` filter naturally
+#   excludes them from Pillar G SLO aggregation. The Step 4.6 NEW
+#   operator-deliberate `reconcile_passes_at_startup` opt-in invokes
+#   Pass A (or broader) at startup for orphan send_intent recovery
+#   per ADR-0014 D33 + ADR-0015 — the per-tick dispatch via Pillar
+#   H Week 7's dispatch_fn IS the structural backstop; pre-flight
+#   is operator convenience.
+# - Week 12 (Stable flip): the binding exit-criterion test verifies
+#   operators see the 24h-uptime + zero-anomaly + crash-recovery
+#   signals via this dashboard.

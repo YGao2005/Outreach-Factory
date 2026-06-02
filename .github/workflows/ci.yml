@@ -1,0 +1,51 @@
+# Pillar I Week 5 — the repo's first CI surface (ADR-0070 D375 invariant 5 +
+# ADR-0074; closes the Pillar A Week 6 §D3 deferral per ADR-0006 §"CI enforcement
+# of the price-update == ADR-amendment discipline").
+#
+# Two jobs:
+#   1. golden-path-gate    — the binding definition-of-done. Runs
+#      `tests/golden_path/gate.py --full` so the whole suite + every committed-green
+#      golden-path assertion must pass (xfail punch-list items stay allowed).
+#   2. cochange-discipline — fails the build if a governed constant changed
+#      without its governing ADR (e.g. budget.py COST_RATES_USD ↔ ADR-0006). The
+#      load-bearing logic is `orchestrator/ci/check_cochange_discipline`; this job
+#      is a thin `python -m orchestrator.ci` wrapper over the PR's diff.
+name: ci
+
+on:
+  push:
+    branches: [main, golden-path-harness]
+  pull_request:
+
+jobs:
+  golden-path-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -r orchestrator/requirements.txt
+      - name: Golden-path gate (full cross-pillar regression)
+        run: python3 tests/golden_path/gate.py --full
+
+  cochange-discipline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the base commit so `git diff` can compare against it.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # On a PR, compare the PR base against the head SHA; on a push, compare
+      # against the previous commit (the D375 invariant 5 `HEAD^ HEAD` shape).
+      - name: Price-update == ADR-amendment discipline
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python -m orchestrator.ci "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          else
+            python -m orchestrator.ci "${{ github.event.before }}" "${{ github.sha }}"
+          fi

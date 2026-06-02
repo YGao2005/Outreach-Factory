@@ -1,0 +1,113 @@
+# Per-register voice-fidelity thresholds — Pillar F Week 4 per ADR-0041 + ADR-0038 D184(a).
+#
+# Copy this file to ~/.outreach-factory/voice_thresholds.yml and tune
+# as your corpus grows. Defaults are calibrated against the reference operator's curated
+# voice corpus at Pillar F Week 4 ship time. See ADR-0041 D199-D205 +
+# ADR-0038 D184(a) for the rationale.
+#
+# What this file does:
+#   Each threshold is a per-draft float in [0.0, 1.0] representing the
+#   minimum voice-fidelity score for a draft in the named register to
+#   advance to `ready`. The fidelity score is the weighted-average
+#   cosine similarity between the draft embedding and the top-K
+#   voice-corpus exemplar embeddings (computed by the fidelity-scoring
+#   primitive landing at Pillar F Week 8+). Drafts BELOW the threshold
+#   get re-drafted (Layer 1 fidelity-scoring gate).
+#
+# What this file does NOT do (at Week 4):
+#   * Score drafts. The fidelity-scoring primitive lands at Pillar F
+#     Week 8+; until then this template is read by the library loader
+#     (orchestrator.voice_corpus.load_voice_thresholds) but no
+#     consumer applies the threshold to drafts.
+#   * Drive the hallucination-detection gate. That's a separate
+#     FIVE-layer defense per ADR-0038 D180 landing at Weeks 6-12.
+#   * Override the per-register channel defaults. Those live at the
+#     module level per ADR-0040 D195 (DEFAULT_CHANNEL_FOR_<REGISTER>).
+#
+# Asymmetric-failure-cost calculus per ADR-0038 D184(a):
+#   * A false-positive (the gate blocks a true-voice draft) costs
+#     the operator ONE re-draft.
+#   * A false-negative (the gate accepts an AI-flavored draft) costs
+#     the operator BRAND FIDELITY — a single ship of an off-voice
+#     draft to a high-stakes prospect degrades the operator's brand +
+#     erodes the relationship.
+# The default thresholds below bias toward false-positive (slightly
+# higher than what your average draft scores). Operators with deep
+# curated corpora MAY tune upward; operators with sparse corpora MAY
+# tune downward (recommended: keep ≥ 0.50 floor across all registers).
+#
+# Strict per-register key requirement per ADR-0041 D202:
+#   The loader requires ALL FIVE register keys to be present. A
+#   partial config is operator misconfiguration; the loader raises
+#   ValueError at load time rather than silently using framework
+#   defaults for missing registers (which would surface as
+#   downstream draft-time inconsistency).
+#
+# Out-of-range thresholds per ADR-0041 D201:
+#   Each threshold MUST be a float in [0.0, 1.0]. Out-of-range
+#   values raise ValueError at load time.
+#
+# Recalibration trajectory (Pillar F Week 8+):
+#   Once the fidelity-scoring primitive ships + per-corpus
+#   per-register score distributions become measurable, operators
+#   should recalibrate against their corpus's distribution. The
+#   defaults below reflect the reference operator's curated corpus's per-register
+#   fidelity at Week 4 ship; YOUR corpus's distribution will differ.
+
+thresholds:
+
+  # ---------------------------------------------------------------------
+  # Cold-pitch — highest-stakes register.
+  #
+  # First-touch sends to prospects with NO prior relationship; voice
+  # mismatch erodes the relationship before it begins. The cold-pitch
+  # threshold is biased high because the per-register adapter at
+  # orchestrator/voice_corpus.py::retrieve_cold_pitch_exemplars
+  # already biases toward proven-effective exemplars
+  # (is_substantive_reply=True per ADR-0040 D196 — the SKILL.md's
+  # 5-touch sampling discipline). High-quality exemplars + high
+  # threshold compound voice fidelity for the highest-stakes register.
+  # ---------------------------------------------------------------------
+  cold-pitch: 0.70
+
+  # ---------------------------------------------------------------------
+  # Congrats — short, register-specific.
+  #
+  # Brief acknowledgement of a prospect's milestone (funding, launch,
+  # job change). Short messages have less surface for voice signal;
+  # the threshold is slightly relaxed to accommodate the brevity.
+  # ---------------------------------------------------------------------
+  congrats: 0.65
+
+  # ---------------------------------------------------------------------
+  # Re-engagement — high-stakes second-touch.
+  #
+  # Reaching back out to a dormant prospect. Voice mismatch between
+  # the prior touch and this re-engage signals "automated outreach"
+  # to the prospect; the threshold is biased highest (0.72) of any
+  # register because the consistency-across-touches signal matters
+  # more here than for the first-touch register.
+  # ---------------------------------------------------------------------
+  re-engagement: 0.72
+
+  # ---------------------------------------------------------------------
+  # Reply — operator response to an inbound.
+  #
+  # The prospect's prior message defines the context; the reply must
+  # match the operator's voice AND respond coherently to the inbound.
+  # The threshold matches cold-pitch (0.70) — the relationship is
+  # established but voice consistency still matters.
+  # ---------------------------------------------------------------------
+  reply: 0.70
+
+  # ---------------------------------------------------------------------
+  # Public-comment — public-facing engagement.
+  #
+  # LinkedIn comments + tweet replies + public-thread engagement.
+  # Public-comment context has loose voice norms (operators use a
+  # different register in public than in DMs); the threshold is the
+  # most relaxed (0.60) of any register because the corpus exemplars
+  # for public-comment tend to be more varied than for DM-based
+  # registers.
+  # ---------------------------------------------------------------------
+  public-comment: 0.60

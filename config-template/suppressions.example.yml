@@ -1,0 +1,69 @@
+# Outreach-factory suppression list.
+#
+# This file is the source of truth for "may we contact this recipient at
+# all?" decisions. Distinct from ~/.outreach-factory/policies/*.yml
+# (which holds cooldown / budget / window rules); suppression is *data*
+# (a list), not a rule definition. See:
+#   - docs/PILLAR-PLAN.md §2 Pillar A (rule classes) and §2 Pillar J (GDPR)
+#   - docs/adr/0004-suppression-and-gdpr-forget.md (the binding spec)
+#   - docs/SOURCES-OF-TRUTH.md row "Suppression list"
+#
+# Copy to ~/.outreach-factory/suppressions/suppressions.yml and edit. The
+# directory can hold multiple *.yml files; the loader unions every file —
+# operators may keep e.g. `gdpr-forget.yml`, `legal-blocklist.yml`,
+# `ops-curated.yml` separately for audit, and the engine merges them.
+#
+# Format
+# ------
+# - `version: 1` is required; bumping requires a migration entry (Pillar B).
+#   Suppression's `version:` is independent from policy YAML's `version:` —
+#   they evolve at different cadences.
+# - Three dimensions: emails, domains, identity_keys. All three are
+#   optional. Empty lists are valid (a brand-new install ships empty).
+# - Entries are canonicalized on load:
+#   * emails → lowercased + stripped (RFC-5322 local-part case-sensitivity
+#     is technically permitted but virtually never relied upon; lowercasing
+#     matches Gmail / Outlook behavior).
+#   * domains → lowercased + stripped.
+#   * identity_keys → LinkedIn URLs / slugs normalize to `in/<slug>` or
+#     `company/<slug>`; everything else is lowercased. Match is symmetric:
+#     a URL in the YAML matches a bare-slug person_id and vice versa.
+#
+# Reason-detail (auditability)
+# ----------------------------
+# Every Block emitted by a suppression rule carries `detail.dimension`
+# (`email` / `domain` / `identity_key`), the matched value, and the source
+# file path so funnel queries can answer "which file blocked this?".
+#
+# Deliberate non-feature: NO block_when:
+# --------------------------------------
+# Cooldown rules accept a `block_when:` filter to scope themselves to
+# specific channels or registers. Suppression rules deliberately do NOT.
+# A do-not-contact entry must fire on every send regardless of channel /
+# register — the kill-switch semantics CAN-SPAM / GDPR / "stop contacting
+# me" all imply every channel. If you want per-channel scoping, split
+# the list into multiple files (e.g. `email-only-suppressions.yml`,
+# `linkedin-only-suppressions.yml`) and reference one per rule in the
+# policy YAML. See ADR-0004 §Alternative 8 for the rationale.
+
+version: 1
+
+emails:
+  # CAN-SPAM unsubscribes go here (Pillar D auto-unsubscribe handler
+  # will append in a separate gdpr-forget.yml; users hand-curate here).
+  # - someone-who-said-stop@example.com
+
+domains:
+  # Spam-trap / honeypot domains. Sending to any of these flags the
+  # account for deliverability damage regardless of recipient consent.
+  # The list below is illustrative — replace with your own intelligence
+  # source. (Common starting points: SpamHaus DBL, Spamcop, internal
+  # blacklists from your ESP.)
+  # - spamtrap.io
+
+identity_keys:
+  # GDPR forget-request landings + ops-curated "do not contact" people
+  # (e.g. competitors' executives you've decided to keep off the funnel).
+  # LinkedIn-shaped entries are canonicalized — full URLs work fine.
+  # - in/john-doe
+  # - https://www.linkedin.com/in/jane-doe

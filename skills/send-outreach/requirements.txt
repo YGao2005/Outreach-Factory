@@ -1,0 +1,17 @@
+# send-outreach dependencies
+google-auth==2.36.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.150.0
+PyYAML==6.0.2
+
+# The send path imports orchestrator/observability.py (Pillar G OTel spans)
+# transitively via reconcile -> conversation_outcomes. These mirror the OTel
+# pins in orchestrator/requirements.txt; without them send_queued.py fails at
+# import with ModuleNotFoundError: No module named 'opentelemetry'.
+opentelemetry-api>=1.38
+opentelemetry-sdk>=1.38
+opentelemetry-exporter-prometheus>=0.59b0
+
+# .env loading for the unified secret loader (orchestrator/env_loader.py). Soft
+# dependency: the loader falls back to a built-in parser if it is absent.
+python-dotenv>=1.0

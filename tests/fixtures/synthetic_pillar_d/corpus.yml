@@ -1,0 +1,461 @@
+# Pillar D Week 12 — 100-message synthetic inbox corpus
+#
+# THE binding exit-criterion test substrate per PILLAR-PLAN §2:
+#   "100-message synthetic inbox classifier benchmark with documented
+#    rule precision/recall; suppression updates idempotent; attribution
+#    funnel reproducible."
+#
+# Per ADR-0031 D136. See sibling README.md for distribution + schema.
+#
+# Maintenance: when a factory pattern changes, audit this corpus for
+# matching rows. When the dispatch priority changes, audit adversarial.
+#
+# Defaults applied by the conftest builder when a field is omitted:
+#   expected_method: rule (overridden to llm for uncategorized rows)
+#   subject: ""
+#   snippet: ""
+#   adversarial: false
+#   multi_touch_count: 1
+#   cross_channel_extra: null
+#   days_ago: 7
+#   closed_won_booking: false
+#   llm_predicted_category: null
+
+version: 1
+
+messages:
+
+  # ===========================================================
+  # UNSUBSCRIBE — 30 messages (legal-liability path)
+  # Distribution: 20 email + 5 li_dm + 5 tw_dm
+  # Every message MUST match at least one factory unsubscribe-pattern.
+  # ===========================================================
+
+  # ----- email × unsubscribe — 20 messages -----
+  - {id: m_001, person_id: p_unsub_em_01, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi from us", body: "please unsubscribe",
+     notes: "Pattern 1 — direct unsubscribe verb"}
+  - {id: m_002, person_id: p_unsub_em_02, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: intro", body: "unsub",
+     notes: "Pattern 2 — unsub shorthand"}
+  - {id: m_003, person_id: p_unsub_em_03, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hello", body: "remove me from your list",
+     notes: "Pattern 3 — remove me from your list"}
+  - {id: m_004, person_id: p_unsub_em_04, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: outreach", body: "Please take me off your mailing list.",
+     notes: "Pattern 3b — take me off list"}
+  - {id: m_005, person_id: p_unsub_em_05, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: pitch", body: "please stop emailing me",
+     notes: "Pattern 4 — please stop emailing"}
+  - {id: m_006, person_id: p_unsub_em_06, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "please stop contacting me",
+     notes: "Pattern 4 — please stop contacting"}
+  - {id: m_007, person_id: p_unsub_em_07, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: follow-up", body: "do not email me again",
+     notes: "Pattern 5a — do not email me again"}
+  - {id: m_008, person_id: p_unsub_em_08, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "do not write back",
+     notes: "Pattern 5b — do not write back"}
+  - {id: m_009, person_id: p_unsub_em_09, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "Please opt me out.",
+     notes: "Pattern 6 — opt me out (Week 2 P2-A regression substrate)"}
+  - {id: m_010, person_id: p_unsub_em_10, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "opt-out",
+     notes: "Pattern 6 — opt-out hyphenated"}
+  - {id: m_011, person_id: p_unsub_em_11, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "Please. Stop emails.",
+     notes: "Pattern 7 — stop emails (imperative, sentence-start)"}
+  - {id: m_012, person_id: p_unsub_em_12, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "no more emails",
+     notes: "Pattern 8 — no more emails"}
+  - {id: m_013, person_id: p_unsub_em_13, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "STOP", body: "STOP",
+     notes: "Pattern 9 — SMS-style STOP (line-anchored)"}
+  - {id: m_014, person_id: p_unsub_em_14, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "leave me alone",
+     notes: "Pattern 10 — leave me alone"}
+  - {id: m_015, person_id: p_unsub_em_15, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "remove me from the mailing",
+     notes: "Pattern 11 — remove from the mailing"}
+  - {id: m_016, person_id: p_unsub_em_16, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "unsubscribe me",
+     notes: "Pattern 12 — unsubscribe me (also fires pattern 1)"}
+  # adversarial: mixed-signal "interested but unsubscribe me" — unsubscribe MUST win per DISPATCH_PRIORITY
+  - {id: m_017, person_id: p_unsub_em_17, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "Sounds interesting but please unsubscribe me.",
+     adversarial: true,
+     notes: "Adversarial: interest signal + unsubscribe → unsubscribe wins per ADR-0027 D110"}
+  # adversarial: unsubscribe phrase inside an OOO-style reply — unsubscribe MUST win
+  - {id: m_018, person_id: p_unsub_em_18, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "I am out of office until June 1. Please also unsubscribe me from your list.",
+     adversarial: true,
+     notes: "Adversarial: ooo signal + unsubscribe → unsubscribe wins per ADR-0025 D97 legal-liability"}
+  - {id: m_019, person_id: p_unsub_em_19, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "Cease emails. Goodbye.",
+     notes: "Pattern 7 — cease emails"}
+  - {id: m_020, person_id: p_unsub_em_20, channel: email, reply_event_type: reply_received,
+     expected_category: unsubscribe, subject: "Re: hi", body: "do not message me",
+     notes: "Pattern 5a — do not message me"}
+
+  # ----- LinkedIn DM × unsubscribe — 5 messages -----
+  - {id: m_021, person_id: p_unsub_li_01, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: unsubscribe, snippet: "please stop messaging me",
+     notes: "Pattern 4 — please stop messaging (linkedin variant)"}
+  - {id: m_022, person_id: p_unsub_li_02, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: unsubscribe, snippet: "unsubscribe me from your outreach",
+     notes: "Pattern 12 — unsubscribe me"}
+  - {id: m_023, person_id: p_unsub_li_03, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: unsubscribe, snippet: "remove me from your list",
+     notes: "Pattern 3 — remove me from list"}
+  - {id: m_024, person_id: p_unsub_li_04, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: unsubscribe, snippet: "do not contact me again",
+     notes: "Pattern 5a — do not contact"}
+  - {id: m_025, person_id: p_unsub_li_05, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: unsubscribe, snippet: "no more messages please",
+     notes: "Pattern 8 — no more messages"}
+
+  # ----- Twitter DM × unsubscribe — 5 messages -----
+  - {id: m_026, person_id: p_unsub_tw_01, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: unsubscribe, snippet: "leave me alone",
+     notes: "Pattern 10 — leave me alone"}
+  - {id: m_027, person_id: p_unsub_tw_02, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: unsubscribe, snippet: "unsubscribe",
+     notes: "Pattern 1 — unsubscribe"}
+  - {id: m_028, person_id: p_unsub_tw_03, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: unsubscribe, snippet: "stop messaging me",
+     notes: "Pattern 7 — stop messaging (sentence-start via \\n join)"}
+  - {id: m_029, person_id: p_unsub_tw_04, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: unsubscribe, snippet: "do not message me",
+     notes: "Pattern 5a — do not message"}
+  - {id: m_030, person_id: p_unsub_tw_05, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: unsubscribe, snippet: "opt me out please",
+     notes: "Pattern 6 — opt me out"}
+
+  # ===========================================================
+  # OOO — 15 messages (long-tail; operator-tunable)
+  # Distribution: 9 email + 3 li_dm + 3 tw_dm
+  # ===========================================================
+
+  # ----- email × ooo — 9 messages -----
+  - {id: m_031, person_id: p_ooo_em_01, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "I'm currently out of office",
+     notes: "OOO Pattern 1 — out of office"}
+  - {id: m_032, person_id: p_ooo_em_02, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "OOO until June 1",
+     notes: "OOO Pattern 2 — OOO abbreviation"}
+  - {id: m_033, person_id: p_ooo_em_03, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "I am on vacation this week",
+     notes: "OOO Pattern 3 — on vacation"}
+  - {id: m_034, person_id: p_ooo_em_04, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "currently away from my desk",
+     notes: "OOO Pattern 4 — currently away"}
+  - {id: m_035, person_id: p_ooo_em_05, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "I will be back on Monday",
+     notes: "OOO Pattern 8 — will be back on"}
+  - {id: m_036, person_id: p_ooo_em_06, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "On parental leave until August",
+     notes: "OOO Pattern 9 — parental leave"}
+  - {id: m_037, person_id: p_ooo_em_07, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "I'm out of the office until next week",
+     notes: "OOO Pattern 5 — I'm out (until)"}
+  # adversarial: OOO + interest signal — OOO wins per priority
+  - {id: m_038, person_id: p_ooo_em_08, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "I'm out of office. Send me more details when I'm back.",
+     adversarial: true,
+     notes: "Adversarial: ooo + interest (send me more) → ooo wins per ADR-0027 D110"}
+  - {id: m_039, person_id: p_ooo_em_09, channel: email, reply_event_type: reply_received,
+     expected_category: ooo, subject: "Re: hi", body: "Automatic reply: I am on annual leave.",
+     notes: "OOO Pattern 7 — automatic reply"}
+
+  # ----- LinkedIn DM × ooo — 3 messages -----
+  - {id: m_040, person_id: p_ooo_li_01, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: ooo, snippet: "I'm on PTO this week",
+     notes: "OOO Pattern 3 — on PTO"}
+  - {id: m_041, person_id: p_ooo_li_02, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: ooo, snippet: "out-of-office until Friday",
+     notes: "OOO Pattern 1 — out-of-office"}
+  - {id: m_042, person_id: p_ooo_li_03, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: ooo, snippet: "currently unavailable",
+     notes: "OOO Pattern 4 — currently unavailable"}
+
+  # ----- Twitter DM × ooo — 3 messages -----
+  - {id: m_043, person_id: p_ooo_tw_01, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: ooo, snippet: "OOTO — back next week",
+     notes: "OOO Pattern 2 — OOTO"}
+  - {id: m_044, person_id: p_ooo_tw_02, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: ooo, snippet: "currently on sabbatical",
+     notes: "OOO Pattern 4 — currently on sabbatical"}
+  - {id: m_045, person_id: p_ooo_tw_03, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: ooo, snippet: "in a conference until Friday",
+     notes: "OOO Pattern 10 — in a conference until"}
+
+  # ===========================================================
+  # WRONG_PERSON — 15 messages
+  # Distribution: 9 email + 3 li_dm + 3 tw_dm
+  # ===========================================================
+
+  # ----- email × wrong_person — 9 messages -----
+  - {id: m_046, person_id: p_wp_em_01, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "You have the wrong person",
+     notes: "WP Pattern 1 — wrong person"}
+  - {id: m_047, person_id: p_wp_em_02, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "I'm not the right contact for this",
+     notes: "WP Pattern 2 — not the right contact"}
+  - {id: m_048, person_id: p_wp_em_03, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Not my department",
+     notes: "WP Pattern 3 — not my department"}
+  - {id: m_049, person_id: p_wp_em_04, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "I'd recommend you reach out to our CTO",
+     notes: "WP Pattern 4 — explicit redirect (I'd recommend)"}
+  - {id: m_050, person_id: p_wp_em_05, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Please contact our VP of Engineering",
+     notes: "WP Pattern 5 — imperative contact + title"}
+  - {id: m_051, person_id: p_wp_em_06, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Try our procurement team",
+     notes: "WP Pattern 6 — try our + role"}
+  - {id: m_052, person_id: p_wp_em_07, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Forwarded this to our director.",
+     notes: "WP Pattern 7 — forwarded this to"}
+  # adversarial: wrong_person + interest signal (referral with positive tone) — wrong_person wins per priority
+  - {id: m_053, person_id: p_wp_em_08, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Sounds interesting, but you should speak with our chief instead.",
+     adversarial: true,
+     notes: "Adversarial: interest + wrong_person → wrong_person wins per ADR-0027 D110"}
+  - {id: m_054, person_id: p_wp_em_09, channel: email, reply_event_type: reply_received,
+     expected_category: wrong_person, subject: "Re: hi", body: "Wrong department for this.",
+     notes: "WP Pattern 9 — wrong department"}
+
+  # ----- LinkedIn DM × wrong_person — 3 messages -----
+  - {id: m_055, person_id: p_wp_li_01, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: wrong_person, snippet: "I don't handle this",
+     notes: "WP Pattern 10 — I don't handle"}
+  - {id: m_056, person_id: p_wp_li_02, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: wrong_person, snippet: "I'm not in my responsibility",
+     notes: "WP Pattern 3 — not in my responsibility"}
+  - {id: m_057, person_id: p_wp_li_03, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: wrong_person, snippet: "passed this along to our head of sales",
+     notes: "WP Pattern 7 — passed this along to"}
+
+  # ----- Twitter DM × wrong_person — 3 messages -----
+  - {id: m_058, person_id: p_wp_tw_01, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: wrong_person, snippet: "Wrong contact, try our CEO",
+     notes: "WP Pattern 1 — wrong contact"}
+  - {id: m_059, person_id: p_wp_tw_02, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: wrong_person, snippet: "I'm not the right person to ask",
+     notes: "WP Pattern 2 — I'm not the right person"}
+  - {id: m_060, person_id: p_wp_tw_03, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: wrong_person, snippet: "redirected to our CFO",
+     notes: "WP Pattern 7 — redirected to"}
+
+  # ===========================================================
+  # REJECTION — 15 messages
+  # Distribution: 11 email + 2 li_dm + 2 tw_dm
+  # Note: evaluated BEFORE interest in DISPATCH_PRIORITY.
+  # ===========================================================
+
+  # ----- email × rejection — 11 messages -----
+  - {id: m_061, person_id: p_rej_em_01, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "Not interested, thanks.",
+     notes: "Rejection — not interested"}
+  - {id: m_062, person_id: p_rej_em_02, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "no thanks",
+     notes: "Rejection — no thanks"}
+  - {id: m_063, person_id: p_rej_em_03, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "We're not in market right now.",
+     notes: "Rejection — not in market"}
+  - {id: m_064, person_id: p_rej_em_04, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "Not a fit for us at this time.",
+     notes: "Rejection — not a fit"}
+  - {id: m_065, person_id: p_rej_em_05, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "we'll pass",
+     notes: "Rejection — we'll pass"}
+  - {id: m_066, person_id: p_rej_em_06, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "not at this time",
+     notes: "Rejection — not at this time"}
+  - {id: m_067, person_id: p_rej_em_07, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "Not in our plans for this year.",
+     notes: "Rejection Pattern 2 — not in our plans"}
+  - {id: m_068, person_id: p_rej_em_08, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "Not a fit at this time.",
+     notes: "Rejection Pattern 2 — not a fit"}
+  # adversarial: rejection with positive politeness signal — rejection wins per priority
+  - {id: m_069, person_id: p_rej_em_09, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "Sounds interesting but not a fit for us right now.",
+     adversarial: true,
+     notes: "Adversarial: interest + rejection → rejection wins per ADR-0027 D110 (rejection priority > interest)"}
+  - {id: m_070, person_id: p_rej_em_10, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "We'll pass on this one.",
+     notes: "Rejection Pattern 1 — we'll pass"}
+  - {id: m_071, person_id: p_rej_em_11, channel: email, reply_event_type: reply_received,
+     expected_category: rejection, subject: "Re: hi", body: "not interested in this",
+     notes: "Rejection — not interested"}
+
+  # ----- LinkedIn DM × rejection — 2 messages -----
+  - {id: m_072, person_id: p_rej_li_01, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: rejection, snippet: "not interested",
+     notes: "Rejection — not interested"}
+  - {id: m_073, person_id: p_rej_li_02, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: rejection, snippet: "we'll pass",
+     notes: "Rejection — we'll pass"}
+
+  # ----- Twitter DM × rejection — 2 messages -----
+  - {id: m_074, person_id: p_rej_tw_01, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: rejection, snippet: "no thanks",
+     notes: "Rejection — no thanks"}
+  - {id: m_075, person_id: p_rej_tw_02, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: rejection, snippet: "Not right now.",
+     notes: "Rejection Pattern 2 — not right now"}
+
+  # ===========================================================
+  # INTEREST — 15 messages (HIGHEST-AMBIGUITY long-tail)
+  # Distribution: 11 email + 2 li_dm + 2 tw_dm
+  # Evaluated LAST in DISPATCH_PRIORITY per ADR-0027 D110.
+  # Closed_won substrate: messages with closed_won_booking=true.
+  # ===========================================================
+
+  # ----- email × interest — 11 messages -----
+  - {id: m_076, person_id: p_int_em_01, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "send me more info",
+     notes: "Interest Pattern 1 — send me more info (closed_won via scenarios.closed_won)"}
+  - {id: m_077, person_id: p_int_em_02, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "Can we book a call?",
+     notes: "Interest Pattern 2b — can we book a call (closed_won via scenarios.closed_won)"}
+  - {id: m_078, person_id: p_int_em_03, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "would love to chat",
+     notes: "Interest Pattern 3 — would love to chat (closed_won + cross-channel via scenarios)"}
+  - {id: m_079, person_id: p_int_em_04, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "Sounds interesting, tell me more",
+     notes: "Interest Pattern 4 + Pattern 6 — sounds interesting + tell me more"}
+  - {id: m_080, person_id: p_int_em_05, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "interested in learning more",
+     notes: "Interest Pattern 5 — interested in learning"}
+  - {id: m_081, person_id: p_int_em_06, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "Tell me more about your pricing",
+     notes: "Interest Pattern 6 — tell me more about"}
+  - {id: m_082, person_id: p_int_em_07, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "Do you have a deck?",
+     notes: "Interest Pattern 7 — do you have a deck"}
+  - {id: m_083, person_id: p_int_em_08, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "What's a good time next week?",
+     notes: "Interest Pattern 8 — what's a good time"}
+  - {id: m_084, person_id: p_int_em_09, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "I'd be happy to chat",
+     notes: "Interest Pattern 9 — I'd be happy to chat"}
+  - {id: m_085, person_id: p_int_em_10, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "open to a call",
+     notes: "Interest Pattern 10 — open to a call"}
+  - {id: m_086, person_id: p_int_em_11, channel: email, reply_event_type: reply_received,
+     expected_category: interest, subject: "Re: hi", body: "send over the case studies",
+     notes: "Interest Pattern 1 — send over the case studies"}
+
+  # ----- LinkedIn DM × interest — 2 messages -----
+  - {id: m_087, person_id: p_int_li_01, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: interest, snippet: "would love to discuss",
+     notes: "Interest Pattern 3 — would love to discuss"}
+  - {id: m_088, person_id: p_int_li_02, channel: linkedin, reply_event_type: li_dm_reply_received,
+     expected_category: interest, snippet: "open to a chat next week",
+     notes: "Interest Pattern 10 — open to a chat"}
+
+  # ----- Twitter DM × interest — 2 messages -----
+  - {id: m_089, person_id: p_int_tw_01, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: interest, snippet: "tell me more",
+     notes: "Interest Pattern 6 — tell me more"}
+  - {id: m_090, person_id: p_int_tw_02, channel: twitter, reply_event_type: tw_dm_reply_received,
+     expected_category: interest, snippet: "interested in hearing more",
+     notes: "Interest Pattern 5 — interested in hearing more"}
+
+  # ===========================================================
+  # UNCATEGORIZED — 10 messages (LLM-fallback trigger surface)
+  # All 10 are LinkedIn INVITE acceptances (no body — naturally
+  # uncategorized per the classifier's empty-text → no-pattern-match
+  # behavior). The LLM fallback predicts "interest" for each
+  # (invite acceptance is an interest signal in practice).
+  # Per ADR-0027 D112 — invite acceptance reply_message_id is
+  # `li_accept:<invitation_id>`; no body.
+  # ===========================================================
+
+  - {id: m_091, person_id: p_uncat_inv_01, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — empty body → rule classifier returns uncategorized; LLM predicts interest"}
+  - {id: m_092, person_id: p_uncat_inv_02, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape as m_091"}
+  - {id: m_093, person_id: p_uncat_inv_03, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_094, person_id: p_uncat_inv_04, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_095, person_id: p_uncat_inv_05, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_096, person_id: p_uncat_inv_06, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_097, person_id: p_uncat_inv_07, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_098, person_id: p_uncat_inv_08, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_099, person_id: p_uncat_inv_09, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+  - {id: m_100, person_id: p_uncat_inv_10, channel: linkedin, reply_event_type: li_invite_reply_received,
+     expected_category: uncategorized, expected_method: rule, llm_predicted_category: interest,
+     notes: "Invite acceptance — same shape"}
+
+# ===========================================================
+# Scenario substrate — APPLIED BY THE CONFTEST BUILDER
+# (per-message overrides keyed by person_id; the builder
+# merges these into the per-message settings)
+# ===========================================================
+
+scenarios:
+
+  # Multi-touch attribution per ADR-0030 D131 — 10 prospects with
+  # 2-3 confirmed same-channel touches before reply. Outcome MUST
+  # attribute to the MOST-RECENT same-channel touch.
+  multi_touch:
+    p_unsub_em_01: 3
+    p_int_em_01:   2
+    p_int_em_02:   3
+    p_rej_em_01:   2
+    p_rej_em_02:   3
+    p_ooo_em_01:   2
+    p_wp_em_01:    2
+    p_unsub_li_01: 2
+    p_int_li_01:   3
+    p_rej_tw_01:   2
+
+  # Cross-channel attribution per ADR-0030 D131 — 5 prospects with
+  # touches on BOTH email and linkedin BEFORE reply. The conftest
+  # builder seeds an extra touch on the OTHER channel. The reply
+  # lands on the original channel; the outcome MUST attribute to the
+  # SAME-CHANNEL touch (NOT the cross-channel touch).
+  cross_channel:  # person_id → extra channel to seed
+    p_unsub_em_02: linkedin   # email reply; also has earlier linkedin touch
+    p_rej_em_03:   linkedin
+    p_int_em_03:   linkedin
+    p_unsub_li_02: email       # linkedin reply; also has earlier email touch
+    p_int_li_02:   email
+
+  # TTL-driven dormancy per ADR-0030 D132 — 5 prospects with replies
+  # dated 60 days ago in non-terminal state. The classifier puts
+  # them in `active` (interest); the TTL driver in Pass N transitions
+  # them to `dormant` because last_activity > 30-day TTL.
+  ttl_dormant_days_ago:  # person_id → days_ago override for the reply
+    p_int_em_07: 60
+    p_int_em_08: 60
+    p_int_em_09: 60
+    p_int_em_10: 60
+    p_int_em_11: 60
+
+  # Closed_won attribution per ADR-0030 D131 — 3 prospects with
+  # category=interest + a calendar_booking_confirmed 3 days after
+  # the reply. Pass O MUST emit `closed_won` outcomes attributing
+  # to the most-recent same-channel touch before the booking.
+  closed_won:  # person_id → days after reply to seed the booking
+    p_int_em_01: 3
+    p_int_em_02: 3
+    p_int_em_03: 3

@@ -1,0 +1,7 @@
+# Test + dev dependencies (runtime deps live in orchestrator/requirements.txt
+# and skills/send-outreach/requirements.txt).
+#
+# Install: pip install -r requirements-dev.txt
+
+pytest>=7.0
+hypothesis>=6.0    # property-based testing (Pillar A cooldown DST safety, etc.)

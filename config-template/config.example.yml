@@ -1,0 +1,201 @@
+# outreach-factory user config
+#
+# Copy this file to ~/.outreach-factory/config.yml and fill in your values.
+# Skills load this at invocation time. Do NOT commit your real config.yml.
+#
+# All paths support ~ (home directory) and $VAR expansion.
+
+# ============================================================
+# Factory install location
+# ============================================================
+factory:
+  # Where you cloned this repo. Skills use this to find voice_retrieve.py + other scripts.
+  home: "~/code/outreach-factory"
+
+# ============================================================
+# Your company — what you're pitching
+# ============================================================
+company:
+  name: "YourCompany"
+  # One-line description of what you do. Used in cold-pitch openings.
+  one_liner: "what your company does in one sentence"
+  # Your wedge, in three flavors. The skill picks one per draft.
+  wedge_plain: |
+    Plain-English description of what your product is.
+    Example: "a tool that catches deterministic rule violations in production AI agents"
+  wedge_analogy: |
+    Analogy-flavored version (most readable for non-technical buyers).
+    Example: "what's basically a Sentry but for AI agents, catching when they break their own rules in production"
+  wedge_failure_mode: |
+    Failure-mode framed version (best for technical buyers who think in failures).
+    Example: "detecting when agents violate policies their builders wrote — wrong refunds, opt-out failures, that kind of thing"
+  website: "yourcompany.com"
+
+# ============================================================
+# Founder / sender identity — what shows up in the email
+# ============================================================
+founder:
+  name: "Your Full Name"           # appears in sign-off
+  short_name: "Your"               # appears in signatures + opener
+  # Opening line of cold-pitch emails. Establishes credibility briefly.
+  intro_line: "I'm Your, a brief credibility line"
+  # Optional one-line context for cold-pitch openings (right after intro_line).
+  # Helps signal you've done real work in the space.
+  credibility_breadcrumb: |
+    Example: "spent the last few months looking at agent failure modes — tau2-bench, AgentProcessBench, talking to founders who've shipped agents in production"
+  email: "you@example.com"
+  # Multi-line email footer. Used as full sign-off in cold-pitch + re-engagement.
+  footer_email: |
+    Your Name
+    Your title · your school/company · Building yourcompany.com
+    you@example.com
+  # Optional: doc describing founder voice/signals — used by /research-prospect for fit-scoring
+  about_path: ""
+
+# ============================================================
+# Vault — where your CRM (markdown frontmatter) lives
+# ============================================================
+vault:
+  path: "/path/to/your/vault"
+  people_dir: "10 People"
+  companies_dir: "20 Companies"
+  conversations_dir: "40 Conversations"
+  lead_lists_dir: "60 Lead Lists"
+  queue_subdir: "🟦 Queue"         # un-touched prospects
+  active_subdir: "🟧 Active"       # in-conversation prospects
+
+# ============================================================
+# Voice translator — your email corpus + retrieval script
+# ============================================================
+voice:
+  # Directory containing embeddings.npy + index.json (your built corpus output).
+  # See {factory.home}/voice/README.md for the manual build path from a Gmail
+  # Takeout mbox export. Pillar F Week 1 (ADR-0038 D178) named the canonical
+  # location: ~/.outreach-factory/voice-corpus/ — operators applying the
+  # canonical-location migration at their own cadence; no automatic move.
+  corpus_dir: "/path/to/voice/corpus"
+  # Python binary with sentence-transformers + numpy installed
+  python_bin: "/path/to/venv/bin/python3"
+  # Path to a single email that defines your canonical voice (optional)
+  voice_anchor_path: ""
+  # Pillar F Week 8 — the embedding-retrieval primitive is the framework
+  # default. (orchestrator/voice_corpus.py replaces the heuristic in
+  # orchestrator/voice_retrieve.py with per-register / per-channel filtering +
+  # a deterministic-clock-controlled recency multiplier per ADR-0038 D179 +
+  # the Week 4 per-register threshold loader per ADR-0041 D204 + the Week 8
+  # per-draft fidelity scoring primitive per ADR-0045 D230.)
+  #
+  # Default flipped from false → true at Pillar F Week 8 per ADR-0039
+  # §Existing-operator seed + ADR-0045 D232. Operators with corpora not yet
+  # tagged with `register` + `channel` schema fields per ADR-0038 D178 opt
+  # OUT by setting this to false (the legacy heuristic at
+  # orchestrator/voice_retrieve.py stays available through the Pillar F
+  # exit gate at Week 12; deprecation timing TBD per operator-transition
+  # cadence).
+  use_embedding_primitive: true
+  # Pillar F Week 2 — embedding model used by orchestrator/voice_corpus.py.
+  # Default is the local CPU-only sentence-transformers model — zero per-call
+  # cost. Cloud models (e.g., OpenAI's "text-embedding-3-small") work too but
+  # incur per-rebuild + per-retrieve cost; pricing-table extension per ADR-0006
+  # is required when opting in to a paid model (per R025 mitigation).
+  embed_model: "BAAI/bge-small-en-v1.5"
+  # Pillar F Week 2 — operator-controlled auto-rebuild on metadata mismatch.
+  # When true, retrieve_voice_exemplars rebuilds the corpus' embeddings.npy +
+  # metadata.json BEFORE proceeding with the lookup if the cache's embed_model
+  # / schema_version / corpus_count diverges from the runtime expectation.
+  # Default false — refuse-loud per R026 mitigation; operators opt in
+  # deliberately. Rebuild can also be triggered manually via:
+  #   python orchestrator/voice_corpus.py rebuild --corpus-dir <path>
+  rebuild_on_metadata_mismatch: false
+  # Pillar F Week 4 — per-register voice-fidelity threshold YAML path per
+  # ADR-0041 D199 + ADR-0038 D184(a). The threshold dict is loaded by
+  # orchestrator.voice_corpus.load_voice_thresholds; downstream consumers
+  # (Pillar F Week 6+ hallucination-detection + Week 8+ fidelity-scoring)
+  # compare each draft's fidelity score against the per-register threshold
+  # to decide whether the draft advances to `ready`. Defaults at Week 4:
+  # cold-pitch ≥0.70 / congrats ≥0.65 / re-engagement ≥0.72 / reply ≥0.70 /
+  # public-comment ≥0.60 (per the reference operator's curated corpus at ship time). Copy
+  # config-template/voice_thresholds.example.yml to the path below and tune
+  # per-register as your corpus grows; the loader falls back to the
+  # default-shipped template with stderr warning when this path is absent.
+  thresholds_path: "~/.outreach-factory/voice_thresholds.yml"
+
+# ============================================================
+# ICP definitions — pointers to your strategy docs (used by /find-leads)
+# ============================================================
+icp:
+  # Optional: tier-S/A/B definitions + filter rules (free-form markdown). /find-leads reads it
+  # to apply the user-defined buyer-shape filter in Phase 3c.
+  tier_playbook_path: ""
+  # Optional: known failure modes by vertical — surfaced by /research-prospect for wedge-aligned signals.
+  failure_mode_library_path: ""
+  # Optional: short, prose description of who's an in-ICP buyer. Used inline by /find-leads when
+  # tier_playbook_path isn't set. Should answer: "what kind of company / role / stage / vertical?"
+  buyer_description: ""
+
+# ============================================================
+# Discovery — curated source lists for /competitor-customers, /find-funded-founders
+# ============================================================
+discovery:
+  # Optional: path to your competitor list (markdown). /competitor-customers reads
+  # this; falls back to inline default if empty.
+  competitor_list_path: ""
+  # Optional: inline fallback list of competitor LinkedIn slugs (used if list path empty)
+  competitor_slugs: []
+  # Optional: path to your seed/series-A VC list (markdown). /find-funded-founders reads this;
+  # falls back to inline default if empty.
+  vc_list_path: ""
+  # Optional: inline fallback list of VC LinkedIn slugs (used if vc_list_path empty)
+  vc_slugs: []
+
+# ============================================================
+# Email enrichment — pattern guessing for /research-prospect
+# ============================================================
+email_enrich:
+  # Optional: path to your email-enrichment script. Script should accept `--name <First>` flag.
+  # If empty, /research-prospect falls back to inline pattern computation (no MX-check, no Reoon).
+  # The factory ships orchestrator/enrich_emails.py — point here at it to enable verification:
+  #   script_path: "{factory.home}/orchestrator/enrich_emails.py"
+  script_path: ""
+  # Optional: path to your Reoon API key file (one line, the key, chmod 600).
+  # If set, /research-prospect uses Tier 2 (Reoon power-mode verify, ~$0.005/check).
+  # If empty, /research-prospect uses Tier 1 (free MX-check via dnspython).
+  # Reoon catches catch-all domains + spamtrap addresses that MX-check can't.
+  # Sign up at reoon.com (free tier 100 verifications/mo, paid 600/mo recurring).
+  reoon_key_path: ""
+  # Ordered patterns to try (highest-hit-rate first). Tokens: {first}, {last}, {first[0]}, {last[0]}, {domain}
+  patterns:
+    - "{first}@{domain}"
+    - "{first}.{last}@{domain}"
+    - "{first}{last[0]}@{domain}"
+    - "{first[0]}{last}@{domain}"
+
+# ============================================================
+# Scraper auth — session cookies for logged-in fetches
+# ============================================================
+scraper_auth:
+  # Optional: path to Twitter/X cookies JSON (array of cookie objects).
+  # If empty, /research-prospect falls back to bio-only fetch.
+  # Default location: {factory.home}/skills/research-prospect/auth/x.com-cookies.json
+  twitter_cookies_path: ""
+
+# ============================================================
+# Send mechanics — optional, if unconfigured sends are user-manual
+# ============================================================
+email_send:
+  gmail_api: false          # set true if Gmail API credentials configured
+  linkedin_mcp: false       # set true if LinkedIn MCP server configured
+  resend_api_key: ""        # optional fallback for Resend.com
+  # Gmail OAuth credentials (downloaded JSON from Google Cloud Console).
+  # Default if empty: ~/.outreach-factory/credentials/gmail_credentials.json
+  gmail_credentials_path: ""
+  # Gmail refresh token (created by `python run.py auth`).
+  # Default if empty: ~/.outreach-factory/credentials/gmail_token.json
+  gmail_token_path: ""
+  # LinkedIn manifest emitted by send_queued.py (consumed by Claude via MCP).
+  # Default if empty: ~/.outreach-factory/linkedin_manifest.json
+  linkedin_manifest_path: ""
+  # LinkedIn free-tier weekly invite soft limit (varies by account history).
+  linkedin_weekly_invite_limit: 100
+  # Name in the email From header (defaults to founder.name if empty).
+  sender_name: ""

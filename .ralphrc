@@ -1,0 +1,41 @@
+# Ralph config — outreach-factory golden-path loop.
+# Launch (from repo root, on the golden-path-harness branch):
+#   ralph --prompt .planning/RALPH-PROMPT.md --monitor --auto-reset-circuit
+#
+# The prompt lives in .planning/ (gitignored) so we keep ONE canonical source;
+# --prompt overrides Ralph's default .ralph/PROMPT.md path.
+
+PROJECT_NAME="outreach-factory"
+PROJECT_TYPE="python"
+CLAUDE_CODE_CMD="claude"
+
+# Pacing. Iterations take minutes (each does real work + the ~130s --full gate),
+# so calls/hour won't bind. Unattended mode auto-waits ~60min if a rate limit hits.
+MAX_CALLS_PER_HOUR=100
+# 20→30 (supervisor 2026-05-28): Pillar I W6 timed out at 20m AFTER writing its tests
+# but BEFORE committing, stranding the work (recovered in f19a8ca). Bigger items
+# (J1 OAuth middleware, J8 export CLI) need more headroom. Pair with incremental-commit
+# guidance in RALPH-PROMPT so a timeout can't strand a whole iteration's work.
+CLAUDE_TIMEOUT_MINUTES=30
+CLAUDE_OUTPUT_FORMAT="json"
+MAX_TOKENS_PER_HOUR=0
+
+# Tools the loop needs: file edits + python (gate.py / pytest / inspect.signature)
+# + git commits + shell. Bash(*) (not a curated per-tool list) because Claude emits
+# COMPOUND commands (pipes/redirects, e.g. `gate.py --status 2>&1 | grep`) that don't
+# match per-tool patterns and trip the permission circuit-breaker -> halt the loop.
+# Broadened by the supervisor 2026-05-28 for unattended throughput; the original
+# curated list is preserved below. Tighten this for a smaller blast radius.
+#   ORIG: Read,Write,Edit,Grep,Glob,Bash(python *),Bash(python3 *),Bash(pytest *),Bash(git *),Bash(grep *),Bash(ls *),Bash(cat *),Bash(find *),Bash(mkdir *)
+ALLOWED_TOOLS="Read,Write,Edit,Grep,Glob,Bash(*)"
+
+# Isolated iterations — state lives in git + the gate, not the session. This is
+# the whole point: each iteration is a fresh short context (no context-limit wall).
+SESSION_CONTINUITY=false
+SESSION_EXPIRY_HOURS=24
+
+# Circuit breaker. Unattended: auto-reset so a transient stall doesn't park the loop.
+CB_NO_PROGRESS_THRESHOLD=3
+CB_SAME_ERROR_THRESHOLD=5
+CB_COOLDOWN_MINUTES=30
+CB_AUTO_RESET=true

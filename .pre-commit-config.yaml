@@ -1,0 +1,18 @@
+# Pillar J W3 (J2; ADR-0078 D390) — secret scanning in pre-commit.
+#
+# gitleaks scans staged changes for committed secrets (OAuth refresh tokens,
+# API keys, private keys) BEFORE they reach history — the cheapest place to
+# stop a leak. Pairs with the osv-scanner workflow (dependency CVEs) and
+# Dependabot (.github/dependabot.yml) to form the J2/J3 supply-chain substrate.
+#
+# Install:  pip install pre-commit && pre-commit install
+# Run all:  pre-commit run --all-files
+#
+# The `rev` pins are operator-maintained; the Dependabot github-actions/pip
+# ecosystems do NOT bump pre-commit revs, so review them at each release gate.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secret scanning)

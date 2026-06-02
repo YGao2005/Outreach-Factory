@@ -1,0 +1,49 @@
+# Golden-path persona — HELD-OUT tenant (gates were NOT tuned on this).
+# Purpose: guard against n=1 overfit on Aiyara AND validate Pillar I multi-tenant
+# isolation. Note the DIFFERENT pipeline topology: an extra provision_api_key stage
+# and a usage-based outcome signal (api_key_activated), not reply-only.
+tenant_id: scholarfeed
+held_out: true
+
+identity:
+  founder_name: Sam Founder                  # synthetic operator (loopback-only fixture)
+  from_email: operator@scholarfeed.example   # RFC-2606 .example TLD; never routable
+  company: ScholarFeed
+  one_liner: research-paper feed + LLM analysis for CS/AI researchers
+
+# Per-tenant pipeline TOPOLOGY — differs from Aiyara (+ provision_api_key).
+pipeline:
+  - discover            # recent-published researchers (arXiv / scholar-feed), not funded founders
+  - research
+  - provision_api_key   # auto-generate a free Pro trial key embedded as the CTA  [MOCKED in L0]
+  - draft               # cold-pitch embedding the key + trial offer
+  - send                # email
+  - reconcile
+  - handle_reply
+
+register: cold-pitch
+loopback_to: ${GOLDEN_PATH_SCHOLARFEED_LOOPBACK_TO}
+
+# The offer (configurable later per user 2026-05-29 — v1 may stub key-gen).
+offer:
+  type: free_trial_api_key
+  tier: pro
+  duration_days: 14
+  cta: "here's a Pro API key, free for 2 weeks"
+
+# Frozen synthetic target (recorded; no live scraping per run).
+prospect:
+  name: Dr. Wei Lin
+  title: Postdoc, NLP
+  affiliation: Stanford
+  email: weilin@stanford.example
+  signal: "first-authored an arXiv paper on retrieval-augmented agents (3 days ago)"
+
+recorded_research_fixture: fixtures/research_scholarfeed.json
+recorded_reply: "Thanks — does the free key include the citation-graph API?"
+expected_reply_class: interest
+
+golden_draft: goldens/scholarfeed.draft.md
+
+# Outcome signal for L3: richer than reply — did they USE the key?
+outcome_signal: api_key_activated

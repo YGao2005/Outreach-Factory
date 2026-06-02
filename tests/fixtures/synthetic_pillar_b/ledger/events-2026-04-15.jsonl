@@ -1,0 +1,6 @@
+{"v": 1, "ts": "2026-04-15T17:30:00.000Z", "type": "send_intent", "intent_id": "snd_synthetic_orphan_01", "person_id": "alice-anderson-li", "channel": "email"}
+{"v": 1, "ts": "2026-04-18T14:00:00.000Z", "type": "li_invite_intent", "intent_id": "li_synthetic_carol_01", "person_id": "carol-cole-li", "channel": "linkedin"}
+{"v": 1, "ts": "2026-04-18T14:00:15.000Z", "type": "li_invite_confirmed", "intent_id": "li_synthetic_carol_01", "person_id": "carol-cole-li", "channel": "linkedin"}
+{"v": 1, "ts": "2026-04-19T10:00:00.000Z", "type": "li_invite_intent", "intent_id": "li_synthetic_orphan_invite_01", "person_id": "carol-cole-li", "channel": "linkedin", "linkedin_url": "https://www.linkedin.com/in/carol-cole/", "register": "cold-pitch"}
+{"v": 1, "ts": "2026-04-19T11:00:00.000Z", "type": "li_dm_intent", "intent_id": "lidm_synthetic_orphan_dm_01", "person_id": "dana-davis-li", "channel": "linkedin", "linkedin_url": "https://www.linkedin.com/in/dana-davis/", "register": "cold-pitch"}
+{"v": 1, "ts": "2026-04-21T09:00:00.000Z", "type": "tw_dm_intent", "intent_id": "twdm_synthetic_orphan_dm_01", "person_id": "evan-estefan-li", "channel": "twitter", "twitter_handle": "evan_estefan", "register": "cold-pitch"}
