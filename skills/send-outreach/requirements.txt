@@ -9,7 +9,7 @@ PyYAML==6.0.2
 # pins in orchestrator/requirements.txt; without them send_queued.py fails at
 # import with ModuleNotFoundError: No module named 'opentelemetry'.
 opentelemetry-api>=1.38
-opentelemetry-sdk>=1.38
+opentelemetry-sdk>=1.42.1
 opentelemetry-exporter-prometheus>=0.59b0
 
 # .env loading for the unified secret loader (orchestrator/env_loader.py). Soft
