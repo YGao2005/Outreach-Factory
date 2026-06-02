@@ -18,7 +18,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 
@@ -95,38 +94,6 @@ class TestGoldenPathL0Aiyara:
         verdict = engine.evaluate([rule], ctx)
         assert isinstance(verdict, t.Block), \
             f"Pillar A — expected Block on duplicate cold-pitch, got {verdict!r}"
-
-    # ---- Pillar F: draft_quality gates → real `draft_ready` payload -------
-    def test_pillar_F_draft_quality_emits_draft_ready(self):
-        from orchestrator import draft_quality as dq, voice_corpus as vc
-
-        def embed_fn(_s: str) -> np.ndarray:
-            return np.ones(8, dtype=float)
-
-        # Claim-light draft → no uncited claims → quality state "ready".
-        draft = ("Hi Dana, saw Loopwell is hiring for support automation. "
-                 "Would you be open to a quick chat next week? Best, Yang")
-        dossier = "Dana Reyes, CTO of Loopwell. Loopwell builds autonomous support agents."
-
-        quality = dq.score_draft(draft, dossier, register="cold-pitch",
-                                 channel="email", embed_fn=embed_fn)
-
-        def _stub_retrieve(_query, **_kw):
-            return [vc.VoiceExemplar(id="vx1", date="2026-05-01T00:00:00Z", body="prior note",
-                                     register="cold-pitch", channel="email", year=2026,
-                                     score=0.95)]
-
-        fidelity = dq.compute_draft_fidelity_score(
-            draft, register="cold-pitch", channel="email",
-            retrieve_fn=_stub_retrieve, embed_fn=embed_fn,
-        )
-        payload = dq.build_draft_ready_payload(
-            person_id="p_dana", quality_result=quality, fidelity_result=fidelity,
-            channel="email", register="cold-pitch",
-        )
-        assert payload["type"] == "draft_ready", f"Pillar F — got {payload.get('type')}"
-        assert payload["draft_hash"].startswith("sha256:"), \
-            f"Pillar F — draft_hash shape: {payload.get('draft_hash')}"
 
     # ---- Pillar G: the funnel SEES a full golden-path run (killer) --------
     def test_pillar_G_funnel_nonempty_after_full_run(self, tmp_ledger, aiyara_persona, golden_now):

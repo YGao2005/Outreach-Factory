@@ -1,6 +1,8 @@
 # outreach-factory
 
-**Cold outreach that does not read as AI-written, produced by a factory line of fresh-context Claude Code agents.** Subscription-billed on your Claude Max plan (no per-email API cost), one parallel agent per prospect, state in plain markdown.
+**An all-in-one cold outreach pipeline that runs inside Claude Code.** Discover prospects, research them, draft the touch, and send it, all in one place. Subscription-billed on your Claude Max plan (no per-email API cost), one parallel agent per prospect, with a real state machine, dedup, and compliance baked in.
+
+*Cold outreach, end to end, inside Claude Code.*
 
 [![CI](https://github.com/YGao2005/Outreach-Factory/actions/workflows/ci.yml/badge.svg)](https://github.com/YGao2005/Outreach-Factory/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,30 +42,35 @@ Specific opener, no superlatives, no rule-of-three, no em dashes, concrete and l
 Runs cold outreach as a factory line:
 
 ```
-Discovery (background)  ->  Research      ->  Draft + voice translate  ->  Humanizer check  ->  [Review]  ->  Send
-  find-leads etc.           research-prospect    draft-outreach              humanizer            you        send-outreach
-  continuous                per-prospect         per-prospect                 per-prospect         batched    batched
-  fresh context             fresh context        fresh context                fresh context
+Discovery (background)  ->  Research      ->  Draft  ->  Humanizer pass  ->  [Review]  ->  Send
+  find-leads etc.           research-prospect    draft-outreach   humanizer           you        send-outreach
+  continuous                per-prospect         per-prospect     per-prospect        batched    batched
+  fresh context             fresh context        fresh context    fresh context
 ```
 
 Each stage is a separate Claude Code skill. Each prospect gets a **fresh-context subagent at each stage**, so there is no contamination across prospects or stages. State persists in markdown frontmatter (Obsidian-shaped vault, but any markdown CRM works).
 
 ## Why this exists
 
-LLMs writing cold-pitch prose in a single session produce text that human readers reliably feel as AI-generated, even after multiple humanizer passes. The tells are structural (em-dash overuse, rule-of-three, marketing-copy intros, manufactured enthusiasm) and survive any number of after-the-fact edits. The root cause is single-session context pollution plus the model's averaged "neutral conversational" register.
+LLMs writing cold-pitch prose in a single session produce text that human readers reliably feel as AI-generated. The tells are structural: em-dash overuse, rule-of-three, marketing-copy intros, manufactured enthusiasm. A big part of the cause is single-session context pollution plus the model's averaged "neutral conversational" register.
 
-The fix is not better humanizing. It is **not generating the averaged prose in the first place**: a fresh context per prospect per stage, with the LLM scoped to scaffolding plus retrieval-grounded rewriting against your own real sent emails. Pair that with a parallel-subagent orchestrator and you get ready-to-send drafts in roughly three minutes per prospect, in your voice, without context pollution.
+The fix is two things, and neither one is a personal voice corpus:
+
+1. **Good scaffolding up front.** Before any prose is generated, the draft is built from a specific dated hook (a real, cited thing the recipient did), a single clear ask, and one slightly vulnerable line that no marketing email would write. Get those three right and most of the AI smell never enters the draft.
+2. **A humanizer pass in a fresh context.** A separate, clean-context agent reviews the assembled draft against an explicit anti-tell checklist (and a single reference example of the target style) and rewrites the parts that still read as machine-written. Running this in its own fresh context, rather than the polluted drafting session, is what makes the post-hoc edit actually land.
+
+Pair that with a parallel-subagent orchestrator and you get ready-to-send drafts in roughly three minutes per prospect, without context pollution.
 
 ## What works today
 
-- **A zero-setup demo**: `./bin/outreach-factory demo` prints a complete, voice-grounded cold email for a fake prospect using only the Python standard library, with no Gmail, no API, and no model download. Inside Claude Code, `/draft-outreach --demo` generates one live. See [`examples/demo/`](examples/demo/).
-- **The full pipeline**, end to end: discover leads, research a prospect, draft with voice translation, run the humanizer anti-tell checklist, then batch-send over Gmail (and LinkedIn connection requests).
+- **A zero-setup demo**: `./bin/outreach-factory demo` prints a complete, scaffolded cold email for a fake prospect using only the Python standard library, with no Gmail, no API, and no model download. Inside Claude Code, `/draft-outreach --demo` generates one live. See [`examples/demo/`](examples/demo/).
+- **The full pipeline**, end to end: discover leads, research a prospect, draft the touch, run the humanizer anti-tell pass, then batch-send over Gmail (and LinkedIn connection requests).
 - **Orchestrator**: a dispatcher with a state machine, cross-process locks, auto-enrollment, and an append-only ledger as the source of truth (idempotent, crash-recoverable).
-- **Voice translator**: CPU-only local embedding retrieval over your curated email corpus, then an inline rewrite in the agent's own call. No Anthropic API calls.
+- **Humanizer**: a fresh-context anti-tell pass that reviews the assembled draft against an explicit checklist plus a single reference example, then rewrites whatever still reads as machine-written. Runs inline in the agent's own call. No Anthropic API calls.
 - **Email verification**: free MX-check (Tier 1) plus optional Reoon (Tier 2).
 - **Compliance**: CAN-SPAM body footer and RFC-8058 one-click unsubscribe; pre-send suppression checks; encrypted-at-rest credentials and GDPR right-to-erasure via crypto-shred (the key is destroyed; the append-only ledger is never rewritten). See [ADR-0080](docs/adr/0080-pillar-j-week-5-6-encrypted-credentials-and-gdpr-forget.md).
 - **Operations**: OpenTelemetry / Prometheus observability, an optional long-running daemon, and multi-tenant support for running more than one sender from one install.
-- **Tested**: a 4286-assertion cross-pillar gate runs in CI on every push.
+- **Tested**: a 3543-assertion cross-pillar gate runs in CI on every push.
 
 ### Roadmap (not yet shipped, and labeled as such)
 
@@ -71,7 +78,7 @@ The fix is not better humanizing. It is **not generating the averaged prose in t
 
 ## Subscription-billed by design
 
-The factory runs entirely on the Claude Max subscription via the Claude Code Agent tool. There is one local Python script (`orchestrator/voice_retrieve.py`) that does CPU-only embedding retrieval, with no Anthropic API calls. The rewrite happens inline in the agent's own LLM call.
+The factory runs entirely on the Claude Max subscription via the Claude Code Agent tool. There are no Anthropic API calls in the happy path. The humanizer pass runs inline in the agent's own LLM call (subscription-billed), so the de-AI step costs nothing per email beyond your existing plan. The only local Python is CPU-only and light.
 
 See [docs/BILLING.md](docs/BILLING.md) for the full billing matrix and the subprocess env trap.
 
@@ -91,7 +98,7 @@ pip install -r orchestrator/requirements.txt
 ./bin/outreach-factory init        # Gmail OAuth -> vault -> first prospect -> test send
 ```
 
-Full walkthrough (MCP servers, voice corpus, migrations): [INSTALL.md](INSTALL.md). Per-feature credential matrix: [docs/OPTIONAL-FEATURES.md](docs/OPTIONAL-FEATURES.md).
+Full walkthrough (MCP servers, migrations): [INSTALL.md](INSTALL.md). Per-feature credential matrix: [docs/OPTIONAL-FEATURES.md](docs/OPTIONAL-FEATURES.md).
 
 ## Make it yours
 
@@ -100,11 +107,11 @@ The repository is a **blank template plus a generic core**, kept separate from w
 - **Core**: `orchestrator/` (the engine), the generic `skills/`, and `config-template/` (the blank `config.yml` + `.env` you fill in). Use-case agnostic: no company, tenant, or person is hardcoded.
 - **Examples**: [`examples/`](examples/) holds complete worked tenants (e.g. [`examples/scholarfeed/`](examples/scholarfeed/)) you can read and adapt. They are not installed by default; you opt in per their README.
 
-To run your own outreach: fill in the templates (the `init` command copies both), bring your own voice corpus (see [voice/README.md](voice/README.md)), describe your ICP, and point `find-leads` at it. To run a second sender, register another tenant using the ScholarFeed example as the template.
+To run your own outreach: fill in the templates (the `init` command copies both), describe your ICP, and point `find-leads` at it. To run a second sender, register another tenant using the ScholarFeed example as the template.
 
 ## Documentation
 
-- **Using it**: [INSTALL.md](INSTALL.md), [docs/OPTIONAL-FEATURES.md](docs/OPTIONAL-FEATURES.md), [docs/BILLING.md](docs/BILLING.md), [voice/README.md](voice/README.md)
+- **Using it**: [INSTALL.md](INSTALL.md), [docs/OPTIONAL-FEATURES.md](docs/OPTIONAL-FEATURES.md), [docs/BILLING.md](docs/BILLING.md)
 - **Understanding it**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Decision log** (for contributors): the numbered ADRs under [docs/adr/](docs/adr/) record why each part is built the way it is.
 

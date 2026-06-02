@@ -8,7 +8,7 @@ The factory is designed to run entirely on the Claude Max (or Pro) subscription.
 |---|---|---|
 | Claude Code session + Agent-tool subagents | ✅ Subscription | ✅ YES — this is the factory's main runtime |
 | `/schedule` routines (Anthropic-hosted cron) | ✅ Subscription | ✅ YES — for background discovery |
-| `orchestrator/voice_retrieve.py` | ✅ Subscription (no API call) | ✅ YES — local retrieval only |
+| Humanizer pass (inline in the agent's own call) | ✅ Subscription (no API call) | ✅ YES, this is the de-AI step |
 | `claude -p "..."` subprocess | ⚠ DEPENDS | Caution — see below |
 | Anthropic SDK direct (`from anthropic import Anthropic`) | ❌ API per-token | ❌ NO |
 | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) | ❌ API per-token (separate credit pool post-June-2026) | ❌ NO |
@@ -37,9 +37,9 @@ result = subprocess.run(
 
 When `ANTHROPIC_API_KEY` is empty/unset in the subprocess env, `claude -p` falls back to the Claude Code subscription auth.
 
-## Why the voice translator was split
+## Why the humanizer runs inline (not as a Python script)
 
-The original `voice_translate.py` did embedding retrieval + Sonnet rewrite as one Python script via the Anthropic SDK. That second step was API-billed per token. The split moved retrieval to `voice_retrieve.py` (CPU-only, $0) and the rewrite to the Claude Code agent's own LLM call (subscription-billed).
+The de-AI step is the humanizer pass: after `/draft-outreach` assembles a plain prose draft, a fresh-context agent rewrites whatever still reads as machine-written, guided by an anti-tell checklist and a single reference example. This rewrite runs inline in the Claude Code agent's own LLM call, which is subscription-billed. There is no Python script that calls the Anthropic SDK for the rewrite, so there is no per-token API charge. The only local Python in the happy path is CPU-only and light, with no model downloads. Keep the rewrite in the agent; never shell it out to a script that reads `ANTHROPIC_API_KEY`.
 
 ## Max plan usage cap
 

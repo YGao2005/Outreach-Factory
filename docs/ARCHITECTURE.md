@@ -3,10 +3,10 @@
 ## Pipeline stages
 
 ```
-Discovery (background)  →  Research      →  Draft + voice translate  →  [Review]  →  Send
-  find-leads etc.          research-prospect    draft-outreach              you         send-outreach
-  continuous               per-prospect         per-prospect                 batched     batched
-  fresh context            fresh context        fresh context (inline humanize)          (Gmail + LinkedIn)
+Discovery (background)  ->  Research      ->  Draft + humanizer pass  ->  [Review]  ->  Send
+  find-leads etc.           research-prospect    draft-outreach             you         send-outreach
+  continuous                per-prospect         per-prospect               batched     batched
+  fresh context             fresh context        fresh context              (Gmail + LinkedIn)
 ```
 
 Each stage is a separate Claude Code skill. State persists in markdown frontmatter on each Person note. The `/dispatch-outreach` skill (Phase 3) advances prospects through these stages by spawning fresh-context Agent-tool subagents.
@@ -35,18 +35,19 @@ Stage transitions are atomic per prospect — one subagent processes one prospec
 
 ## Subscription billing
 
-All Claude work runs through Claude Code session subagents (Agent tool) or `/schedule` routines — both subscription-billed. The only Python is `orchestrator/voice_retrieve.py` which does local CPU-only retrieval (no Anthropic API calls).
+All Claude work runs through Claude Code session subagents (Agent tool) or `/schedule` routines, both subscription-billed. The humanizer pass that de-AIs each draft runs inline in the agent's own LLM call, so it is subscription-billed too with no Anthropic API calls. The only local Python is CPU-only and light.
 
 See [BILLING.md](BILLING.md) for the full matrix.
 
 ## Why fresh context per stage
 
-Single-session context pollution is the root cause of voice fidelity failures in LLM-generated outreach. When the same session does discovery + research + drafting + humanization, the model's context fills with prospect-specific facts AND drafting voice patterns AND prior session content. By the time it generates prose, the context is biased toward whichever previous output it produced.
+Single-session context pollution is a big part of why LLM-generated outreach reads as machine-written. When the same session does discovery + research + drafting + humanization, the model's context fills with prospect-specific facts AND drafting patterns AND prior session content. By the time it generates prose, the context is biased toward whichever previous output it produced. The humanizer pass in particular only lands when it runs in a clean context: a humanizer sharing the polluted drafting session tends to rubber-stamp its own prose.
 
 Fresh subagent per stage solves this architecturally:
 - Each subagent starts with no conversation history
 - The skill execution is its only context
-- The output is shaped by skill + retrieval + prospect dossier, not by what the parent session was doing
+- The output is shaped by skill + prospect dossier, not by what the parent session was doing
+- The humanizer reviews the assembled draft in its own fresh context, against an anti-tell checklist and a single reference example
 - Multiple prospects can be processed in parallel without contaminating each other
 
 ## Concurrency model
@@ -55,21 +56,23 @@ Fresh subagent per stage solves this architecturally:
 - **Within a prospect**: serial — one stage at a time, frontmatter advances atomically
 - **File locking**: the dispatcher holds the queue; agents only touch files for prospects assigned to them
 
-## Voice translator (RAG + inline rewrite)
+## Humanizer (fresh-context anti-tell pass)
 
-The voice translator has two pieces:
+> **Note:** the prior voice-corpus / embedding-retrieval subsystem (Pillar F) was removed. See the Pillar F removal ADR. The de-AI step is now the humanizer pass described here. There is no embedding index, no `sentence-transformers`, and no curated email corpus.
 
-1. **Retrieval (`orchestrator/voice_retrieve.py`)** — local, CPU-only. Loads embeddings of the user's email corpus (bge-small-en-v1.5 from sentence-transformers), retrieves top-5 most-similar exemplars to the draft using cosine similarity with recency bias. Outputs JSON. $0, no API.
+The humanizer is a single rewrite pass that runs after `/draft-outreach` assembles a plain prose draft:
 
-2. **Rewrite (in-agent)** — the skill instructs the agent to build a rewrite prompt from the retrieve output (5 exemplars + hard rules) and produce the rewritten draft as part of its own LLM output. Subscription-billed.
+1. **Scaffolding first.** The draft is built from a specific dated hook (a real, cited thing the recipient did), a single clear ask, and one slightly vulnerable line. Getting these right keeps most AI tells out of the draft before any rewrite.
 
-The split exists because the previous implementation (`voice_translate.py`) called the Anthropic API directly via `ANTHROPIC_API_KEY` and bypassed the subscription. See [BILLING.md](BILLING.md).
+2. **Rewrite (in-agent, fresh context).** The assembled draft is handed to the humanizer in a fresh context (a fresh-context subagent or the `/humanizer` skill), along with an explicit anti-tell checklist and a single reference example of a good human-written touch in the same register. The humanizer rewrites whatever still reads as machine-written and returns the result. This runs as part of the agent's own LLM output, so it is subscription-billed.
+
+The rewrite stays in the agent; it is never shelled out to a Python script that calls the Anthropic API. See [BILLING.md](BILLING.md).
 
 ## Open design questions
 
-- **Corpus quality**: how many emails are enough? n=224 (the original Aiyara corpus) is workable but reply-heavy; cold-pitch register is underrepresented. Recommendation: augment with explicit cold-pitch examples + register-tagged retrieval.
 - **Per-window throughput**: Claude Max has a 5-hour rolling message window (~200-225 msgs). End-to-end factory at ~5-10 LLM calls per prospect = ~25-40 prospects per window. Real ceiling.
 - **Template strategy**: cold-pitch is currently 2-question discovery-led. Free-work-offer pattern (lead with concrete value, low-friction CTA) is queued as a register variant.
+- **Reference-example selection**: the humanizer takes one reference example per register. Choosing the best single example per register, and whether to vary it per recipient, is open.
 
 ## Roadmap
 
@@ -82,9 +85,6 @@ The split exists because the previous implementation (`voice_translate.py`) call
 
 ### Parking lot
 
-- **Voice corpus builder skill** (`/build-voice-corpus`): automate what
-  `voice/README.md` documents manually today. Build if there's user demand;
-  the manual path works.
 - **Headless dispatcher** (`orchestrator/dispatcher.py`): subprocess `claude -p`
   for overnight runs with `ANTHROPIC_API_KEY` unset (per BILLING.md). Real
   bottleneck is human review at `drafted → ready`, not "wishing I could run

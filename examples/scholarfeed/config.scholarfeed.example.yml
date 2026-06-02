@@ -46,11 +46,10 @@ vault:
   active_subdir: "🟧 Active"
 
 voice:
-  corpus_dir: "~/.outreach-factory/voice-corpus"
-  python_bin: "~/code/outreach-factory/.venv/bin/python3"
-  use_embedding_primitive: true
-  embed_model: "BAAI/bge-small-en-v1.5"
-  thresholds_path: "~/.outreach-factory/voice_thresholds.yml"
+  # Optional. Path to a markdown file with one human-written example per register;
+  # the humanizer anchors its Phase 4 rewrite to it. Defaults to the factory's
+  # skills/draft-outreach/reference-examples.md when empty.
+  reference_example_path: "skills/draft-outreach/reference-examples.md"
 
 email_enrich:
   script_path: ""

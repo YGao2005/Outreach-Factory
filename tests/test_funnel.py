@@ -420,10 +420,8 @@ class TestBuildReport:
         binding-question sections MUST appear in the report on an
         empty ledger + carry their structural invariants. The
         always-7-stages invariant of ``aggregate_per_stage_funnel``
-        + the BOTH-reasons invariant of
-        ``aggregate_layer_5_drift_by_reason`` are surfaced as report
-        keys with count 0 (NOT absence-implies-zero) per ADR-0058
-        D321 + ADR-0059 D325.
+        is surfaced as report keys with count 0 (NOT absence-implies-
+        zero) per ADR-0059 D325.
         """
         led = _make_ledger(tmp_path)
         report = funnel.build_report(led, since="30d", now=_now())
@@ -455,25 +453,10 @@ class TestBuildReport:
         for stage, count in per_stage.items():
             assert count == 0, f"stage {stage!r} count = {count} on empty ledger"
 
-        # gate_refusals — the BOTH-reasons invariant for Layer 5
-        # drift per ADR-0058 D321 + the empty-counter invariant for
-        # the other aggregations.
+        # gate_refusals — the empty-counter invariant for the
+        # aggregations.
         gr = report["gate_refusals"]
         assert gr["per_rule_policy_blocked_count"] == {}
-        assert gr["per_register_hallucination_detected_count"] == {}
-        layer_5 = gr["per_layer_5_drift_reason_count"]
-        assert "vault_ahead_of_ledger" in layer_5, (
-            "ADR-0058 D321 reason-precedence drift: legacy "
-            "vault_ahead_of_ledger reason MUST be present with "
-            "count 0 on empty ledger"
-        )
-        assert "ready_without_draft_ready_event" in layer_5, (
-            "ADR-0058 D321 reason-precedence drift: new "
-            "ready_without_draft_ready_event reason MUST be present "
-            "with count 0 on empty ledger"
-        )
-        assert layer_5["vault_ahead_of_ledger"] == 0
-        assert layer_5["ready_without_draft_ready_event"] == 0
         assert gr["manual_override_count"] == 0
         assert gr["per_source_cost_event_count"] == {}
 
@@ -1007,174 +990,6 @@ class TestAggregatePolicyBlockedByRule:
         assert keys == sorted(keys)
 
 
-class TestAggregateHallucinationByRegister:
-    """Pillar G Week 12 binding question 3 — per-register
-    hallucination_detected counts. Per ADR-0043 D219 the event class
-    fires only when uncited claims are present.
-
-    Pillar G Week 12 follow-up (per-week-review P3-4) — missing
-    ``register`` field routes under the ``"none"`` sentinel rather
-    than silent-drop, mirroring
-    :func:`aggregate_policy_blocked_by_rule`'s missing-rule fallback."""
-
-    def test_empty_ledger(self, tmp_path):
-        led = _make_ledger(tmp_path)
-        assert funnel.aggregate_hallucination_by_register(
-            led, since_iso=_SINCE_2026_04_23,
-        ) == {}
-
-    def test_per_register_count(self, tmp_path):
-        led = _make_ledger(tmp_path)
-        for reg in ["cold_pitch", "cold_pitch", "re_engagement"]:
-            led.append({
-                "type": "hallucination_detected",
-                "person_id": "p", "channel": "email",
-                "register": reg,
-                "ts": "2026-05-22T10:00:00.000Z",
-            })
-        result = funnel.aggregate_hallucination_by_register(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert result == {"cold_pitch": 2, "re_engagement": 1}
-
-    def test_missing_register_routes_under_none_P3_4(self, tmp_path):
-        """Pillar G Week 12 follow-up (per-week-review P3-4) —
-        producer-side bugs that drop the ``register`` field MUST
-        surface under the ``"none"`` sentinel rather than silently
-        vanishing from the per-operator dashboard."""
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "hallucination_detected",
-            "person_id": "p", "channel": "email",
-            # No register field.
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        led.append({
-            "type": "hallucination_detected",
-            "person_id": "p2", "channel": "email",
-            "register": "",  # Empty string also routes under "none".
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        result = funnel.aggregate_hallucination_by_register(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert result == {"none": 2}
-
-    def test_window_filter(self, tmp_path):
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "hallucination_detected",
-            "person_id": "p", "channel": "email",
-            "register": "cold_pitch",
-            "ts": "2026-01-01T00:00:00.000Z",
-        })
-        result = funnel.aggregate_hallucination_by_register(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert result == {}
-
-
-class TestAggregateLayer5DriftByReason:
-    """Pillar G Week 12 binding question 3 — per-reason Layer 5 drift
-    counts.
-
-    The structural commitment per ADR-0058 D321 + ADR-0049 §66 P2-2:
-    BOTH legacy ``vault_ahead_of_ledger`` AND new
-    ``ready_without_draft_ready_event`` reasons are ALWAYS present
-    with count 0 if absent (explicit-zero-presence convention).
-    Events carrying ``_recovered_by`` are EXCLUDED per R032."""
-
-    def test_empty_ledger_both_reasons_present(self, tmp_path):
-        """ADR-0058 D321 — the BOTH-reasons invariant."""
-        led = _make_ledger(tmp_path)
-        result = funnel.aggregate_layer_5_drift_by_reason(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert "vault_ahead_of_ledger" in result
-        assert "ready_without_draft_ready_event" in result
-        assert result["vault_ahead_of_ledger"] == 0
-        assert result["ready_without_draft_ready_event"] == 0
-
-    def test_per_reason_count(self, tmp_path):
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p_1", "channel": "email",
-            "reason": "vault_ahead_of_ledger",
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p_2", "channel": "email",
-            "reason": "ready_without_draft_ready_event",
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        result = funnel.aggregate_layer_5_drift_by_reason(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert result["vault_ahead_of_ledger"] == 1
-        assert result["ready_without_draft_ready_event"] == 1
-
-    def test_R032_recovered_by_excluded(self, tmp_path):
-        """R032 — events with ``_recovered_by`` are synthetic-recovery
-        emits per ADR-0056 D311 + ADR-0058 D321; EXCLUDED from Layer
-        5 drift counting so operators running backfills don't see
-        synthetic-data spikes inflate the dashboard."""
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p_1", "channel": "email",
-            "reason": "vault_ahead_of_ledger",
-            "_recovered_by": "migration_0019",
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        # Non-recovered event for comparison.
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p_2", "channel": "email",
-            "reason": "vault_ahead_of_ledger",
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        result = funnel.aggregate_layer_5_drift_by_reason(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        # Only the non-recovered event counts.
-        assert result["vault_ahead_of_ledger"] == 1
-
-    def test_reason_outside_subscribed_set_skipped(self, tmp_path):
-        """Reasons in the wider ``reconcile._DRIFT_REASONS`` but NOT
-        in ``subscribed_reasons`` (default
-        ``PILLAR_F_LAYER_5_DRIFT_REASONS``) are silently skipped."""
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p", "channel": "email",
-            "reason": "some_other_drift_reason",
-            "ts": "2026-05-22T10:00:00.000Z",
-        })
-        result = funnel.aggregate_layer_5_drift_by_reason(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        assert "some_other_drift_reason" not in result
-        # Default reasons still present with count 0.
-        assert result["vault_ahead_of_ledger"] == 0
-        assert result["ready_without_draft_ready_event"] == 0
-
-    def test_window_filter(self, tmp_path):
-        led = _make_ledger(tmp_path)
-        led.append({
-            "type": "reconcile_drift",
-            "person_id": "p", "channel": "email",
-            "reason": "vault_ahead_of_ledger",
-            "ts": "2026-01-01T00:00:00.000Z",
-        })
-        result = funnel.aggregate_layer_5_drift_by_reason(
-            led, since_iso=_SINCE_2026_04_23,
-        )
-        # Both reasons present with count 0 (no events in window).
-        assert result["vault_ahead_of_ledger"] == 0
-
-
 class TestAggregateManualOverrideCount:
     """Pillar G Week 12 binding question 3 — manual_override count."""
 
@@ -1474,8 +1289,6 @@ class TestPublicSurface:
             "aggregate_slo_violation_detected_count",
             "aggregate_per_stage_funnel",
             "aggregate_policy_blocked_by_rule",
-            "aggregate_hallucination_by_register",
-            "aggregate_layer_5_drift_by_reason",
             "aggregate_manual_override_count",
             "aggregate_cost_by_source",
         ]:

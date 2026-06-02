@@ -13,12 +13,8 @@ observability questions per ADR-0050 D275 + D276(a) + PILLAR-PLAN
    :data:`ledger._STAGE_BY_EVENT_TYPE` per the Pillar G Week 1
    P3-2 carry-forward (Week 12 author closes this carry-forward).
 3. **What did the gate refuse this week?** Per-rule
-   ``policy_blocked`` counts + per-register
-   ``hallucination_detected`` counts + per-reason
-   ``reconcile_drift`` counts (BOTH legacy + new reasons per
-   ADR-0058 D321 + ADR-0049 §66 P2-2 reason-precedence drift
-   discipline) + ``manual_override`` counts + per-source
-   ``cost_incurred`` counts.
+   ``policy_blocked`` counts + ``manual_override`` counts +
+   per-source ``cost_incurred`` counts.
 
 The CLI answers all three questions in ONE invocation per the
 one-CLI-invocation invariant per ADR-0050 D276(a) — the structural
@@ -37,9 +33,9 @@ criterion ROW 7 (preserved verbatim across Pillar G Week 12).
 aggregations are **read-only** ledger walks (no ``led.append`` calls
 inside ``build_report``). Operator-deliberate primitives at
 :mod:`orchestrator.observability` (e.g.,
-:func:`detect_slo_violations`, :func:`collect_cost_snapshots`,
-:func:`collect_per_person_layer_5_drift_snapshots`) emit diagnostic
-events when their closed-set discipline surfaces drift — the funnel
+:func:`detect_slo_violations`, :func:`collect_cost_snapshots`)
+emit diagnostic events when their closed-set discipline surfaces
+drift — the funnel
 CLI does NOT consume those primitives directly (their byte-identical
 contract would conflict with this CLI's; instead the CLI walks the
 ledger independently with mirror constants for the closed-sets).
@@ -76,8 +72,7 @@ The output JSON contains:
   + the extended pipeline stages (``sent`` / ``replied`` /
   ``outcome_terminal``) answering binding question 2.
 * ``gate_refusals`` (Pillar G Week 12) — sorted-key dict of the
-  per-rule policy_blocked + per-register hallucination_detected +
-  per-reason layer_5_drift + manual_override + per-source cost
+  per-rule policy_blocked + manual_override + per-source cost
   counts answering binding question 3.
 
 Determinism contract per ADR-0031 D140:
@@ -121,11 +116,10 @@ names directly (no composite keys).
   tuple sees a loud ``RuntimeError`` at import time instead of an
   unhandled ``KeyError`` at the operator-facing CLI on the first
   event with the new stage.
-* P3-4 — :func:`aggregate_hallucination_by_register` and
-  :func:`aggregate_cost_by_source` now route events with missing
-  ``register`` / ``source`` fields under the ``"none"`` sentinel
-  key (mirroring :func:`aggregate_policy_blocked_by_rule`'s missing-
-  rule fallback) so producer-side bugs surface immediately in the
+* P3-4 — :func:`aggregate_cost_by_source` now routes events with a
+  missing ``source`` field under the ``"none"`` sentinel key
+  (mirroring :func:`aggregate_policy_blocked_by_rule`'s missing-rule
+  fallback) so producer-side bugs surface immediately in the
   operator dashboard instead of vanishing.
 
 Per-week-review track record at this follow-up: SIXTEEN consecutive
@@ -150,13 +144,11 @@ from typing import Iterable
 
 # Bare imports per the orchestrator/ scripts' import convention.
 import ledger as _ledger  # noqa: E402  (added by conftest.py sys.path shim)
-# Pillar G Week 12 — consume the per-closed-set mirror constants for
-# the per-Layer-5 drift reason subscription per ADR-0058 D321 + the
-# per-pillar-G surface discipline. The funnel CLI implements its OWN
-# read-only ledger walks per ADR-0059 D325 (the operator-deliberate
-# primitives at :mod:`observability` emit diagnostic events which
-# would break the byte-identical determinism contract per ADR-0031
-# D140 if invoked from inside ``build_report``).
+# The funnel CLI implements its OWN read-only ledger walks per
+# ADR-0059 D325 (the operator-deliberate primitives at
+# :mod:`observability` emit diagnostic events which would break the
+# byte-identical determinism contract per ADR-0031 D140 if invoked
+# from inside ``build_report``).
 import observability as _observability  # noqa: E402
 
 
@@ -786,90 +778,6 @@ def aggregate_policy_blocked_by_rule(
     return dict(sorted(counter.items()))
 
 
-def aggregate_hallucination_by_register(
-    led: _ledger.Ledger,
-    *,
-    since_iso: str,
-) -> dict[str, int]:
-    """Aggregate ``hallucination_detected`` events by ``register``
-    field over the window — answers binding question 3's surface for
-    "which registers had Layer 3 parser refusals?"
-
-    Per ADR-0043 D219 the ``hallucination_detected`` event emits
-    only when uncited claims are present; the per-register count IS
-    the per-register Layer 3 refusal count.
-
-    Returns a sorted-key dict of ``register`` → ``count``. Registers
-    with zero refusals in the window are OMITTED.
-    """
-    counter: Counter[str] = Counter()
-    for ev in led.all_events():
-        if ev.get("type") != "hallucination_detected":
-            continue
-        ts = ev.get("ts") or ""
-        if ts < since_iso:
-            continue
-        # Pillar G Week 12 follow-up (per-week-review P3-4) —
-        # producer-side bugs that drop the ``register`` field are
-        # surfaced under the ``"none"`` sentinel rather than silently
-        # dropped, mirroring :func:`aggregate_policy_blocked_by_rule`'s
-        # missing-rule fallback. Operators reading the dashboard see
-        # the missing-register cohort immediately + can locate the
-        # producer via :ref:`_emitted_by` audit trail.
-        register = ev.get("register")
-        key = register if isinstance(register, str) and register else "none"
-        counter[key] += 1
-    return dict(sorted(counter.items()))
-
-
-def aggregate_layer_5_drift_by_reason(
-    led: _ledger.Ledger,
-    *,
-    since_iso: str,
-    subscribed_reasons: frozenset[str] = (
-        _observability.PILLAR_F_LAYER_5_DRIFT_REASONS
-    ),
-) -> dict[str, int]:
-    """Aggregate ``reconcile_drift`` events by ``reason`` field over
-    the window, filtered to ``subscribed_reasons`` — answers binding
-    question 3's surface for "what did Layer 5 backstop refuse?"
-
-    Per ADR-0058 D321 + ADR-0049 §66 P2-2 the legacy-state-vs-new-
-    defense-layer reason-precedence drift discipline requires the
-    Layer 5 dashboard subscribe to BOTH ``vault_ahead_of_ledger`` AND
-    ``ready_without_draft_ready_event``. The default
-    ``subscribed_reasons = PILLAR_F_LAYER_5_DRIFT_REASONS`` preserves
-    the structural commitment.
-
-    R032 synthetic-event exclusion per ADR-0056 D311 + ADR-0058
-    D321 — events carrying ``_recovered_by`` (backfill / reconcile /
-    migration_<id> per ADR-0010 D17) are EXCLUDED from the Layer 5
-    drift aggregation.
-
-    Returns a sorted-key dict of ``reason`` → ``count``. Reasons in
-    ``subscribed_reasons`` are ALWAYS present with count 0 if no
-    events in the window (the structural protection per ADR-0058
-    D321 — operators see ZERO explicitly, not absence implying
-    zero); reasons in the wider :data:`reconcile._DRIFT_REASONS` but
-    NOT in ``subscribed_reasons`` are SILENTLY SKIPPED (those drift
-    surfaces are Pass C bootstrap drift per ADR-0058 D321).
-    """
-    counter: Counter[str] = Counter({reason: 0 for reason in subscribed_reasons})
-    for ev in led.all_events():
-        if ev.get("type") != "reconcile_drift":
-            continue
-        if ev.get("_recovered_by"):
-            continue
-        ts = ev.get("ts") or ""
-        if ts < since_iso:
-            continue
-        reason = ev.get("reason")
-        if not isinstance(reason, str) or reason not in subscribed_reasons:
-            continue
-        counter[reason] += 1
-    return dict(sorted(counter.items()))
-
-
 def aggregate_manual_override_count(
     led: _ledger.Ledger,
     *,
@@ -931,8 +839,7 @@ def aggregate_cost_by_source(
         # producer-side bugs that drop the ``source`` field are
         # surfaced under the ``"none"`` sentinel rather than silently
         # dropped, mirroring :func:`aggregate_policy_blocked_by_rule`'s
-        # missing-rule fallback + :func:`aggregate_hallucination_by_register`'s
-        # missing-register fallback.
+        # missing-rule fallback.
         source = ev.get("source")
         key = source if isinstance(source, str) and source else "none"
         counter[key] += 1
@@ -988,12 +895,6 @@ def build_report(
     policy_blocked_by_rule = aggregate_policy_blocked_by_rule(
         led, since_iso=since_iso,
     )
-    hallucination_by_register = aggregate_hallucination_by_register(
-        led, since_iso=since_iso,
-    )
-    layer_5_drift_by_reason = aggregate_layer_5_drift_by_reason(
-        led, since_iso=since_iso,
-    )
     manual_override_count = aggregate_manual_override_count(
         led, since_iso=since_iso,
     )
@@ -1031,10 +932,6 @@ def build_report(
         # refuse this week?"
         "gate_refusals": {
             "per_rule_policy_blocked_count": policy_blocked_by_rule,
-            "per_register_hallucination_detected_count": (
-                hallucination_by_register
-            ),
-            "per_layer_5_drift_reason_count": layer_5_drift_by_reason,
             "manual_override_count": manual_override_count,
             "per_source_cost_event_count": cost_by_source,
         },
@@ -1216,8 +1113,6 @@ __all__ = [
     "DEFAULT_SINCE",
     "aggregate_conversation_outcomes",
     "aggregate_cost_by_source",
-    "aggregate_hallucination_by_register",
-    "aggregate_layer_5_drift_by_reason",
     "aggregate_manual_override_count",
     "aggregate_per_channel_send_failed_aborted",
     "aggregate_per_channel_send_latency_p99",

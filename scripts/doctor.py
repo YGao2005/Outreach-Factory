@@ -162,8 +162,6 @@ def check_vault(config: dict) -> dict:
 def check_python_deps() -> dict:
     needed = {
         "yaml": "pyyaml",
-        "numpy": "numpy",
-        "sentence_transformers": "sentence-transformers",
         "dns.resolver": "dnspython",
     }
     missing = []
@@ -228,36 +226,6 @@ def check_mcp(server_name: str) -> dict:
 # ============================================================
 # Optional features
 # ============================================================
-def check_voice_corpus(config: dict) -> dict:
-    corpus_dir_str = (config.get("voice") or {}).get("corpus_dir", "").strip()
-    if not corpus_dir_str or corpus_dir_str.startswith("/path/to/"):
-        return _result(
-            "voice_corpus",
-            FAIL,
-            "voice.corpus_dir not configured",
-            hint="see voice/README.md for the manual build path from a Gmail Takeout mbox",
-            enables="/draft-outreach voice-translate (RAG retrieval against your email corpus)",
-        )
-    corpus = Path(corpus_dir_str).expanduser()
-    emb = corpus / "embeddings.npy"
-    idx = corpus / "index.json"
-    missing = [str(p.name) for p in (emb, idx) if not p.exists()]
-    if missing:
-        return _result(
-            "voice_corpus",
-            FAIL,
-            f"corpus dir exists but missing: {', '.join(missing)}",
-            hint=f"build it via voice/build_index.py (see voice/README.md)",
-            enables="/draft-outreach voice-translate",
-        )
-    return _result(
-        "voice_corpus",
-        OK,
-        f"{corpus} (embeddings.npy + index.json present)",
-        enables="/draft-outreach voice-translate",
-    )
-
-
 def check_reoon_key(config: dict) -> dict:
     enrich = config.get("email_enrich") or {}
     key_path_str = enrich.get("reoon_key_path", "").strip()
@@ -526,7 +494,6 @@ def main() -> int:
 
     optional: list[dict] = []
     if config is not None:
-        optional.append(check_voice_corpus(config))
         optional.append(check_reoon_key(config))
         optional.append(check_gmail_creds(config))
         optional.append(check_twitter_cookies(config))

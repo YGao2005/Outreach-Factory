@@ -1,4 +1,4 @@
-# Golden-path persona — TRAINING tenant (gates + voice corpus calibrated here).
+# Golden-path persona, TRAINING tenant (gates calibrated here).
 # The send target is ALWAYS a controlled loopback; the prospect email uses the
 # RFC-2606 .example TLD (guaranteed non-routable) so no automated run can spam.
 tenant_id: aiyara

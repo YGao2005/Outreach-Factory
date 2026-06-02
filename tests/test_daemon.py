@@ -4806,16 +4806,16 @@ class TestMaterializeIndexes:
     def test_person_less_event_indexed_in_event_class_but_not_person_index_per_w8_d360(
         self, tmp_path,
     ):
-        """ADR-0067 D360 — ad-hoc validation events (Pillar F per
-        ADR-0045 D231) have NO person_id; they ARE indexed by class
-        but skipped from PersonEventIndex."""
+        """ADR-0067 D360 — person-less operational events (e.g., the
+        daemon health probe) have NO person_id; they ARE indexed by
+        class but skipped from PersonEventIndex."""
         led = self._make_ledger_with_events(tmp_path, [
-            # No person_id field — ad-hoc validation event.
-            {"type": "draft_quality_scored", "register": "cold-pitch",
-             "voice_fidelity_score": 0.85, "state": "ready"},
+            # No person_id field — person-less operational event.
+            {"type": "health_probe", "channel": None,
+             "ts": "2026-05-27T10:00:00.000Z"},
         ])
         event_class_idx, person_idx = _runner._materialize_indexes(led)
-        assert "draft_quality_scored" in event_class_idx._data
+        assert "health_probe" in event_class_idx._data
         assert person_idx._data == {}  # No person_id → skipped.
 
     def test_chronological_order_preserved_per_w8_d360(self, tmp_path):
@@ -5013,156 +5013,6 @@ class TestInitDaemonIndexMaterialization:
         assert runner.event_class_index._data == {}
         assert runner.person_event_index._data == {}
 
-
-class TestPerPersonPrimitiveIndexConsumption:
-    """Pillar H Week 8 — the THREE per-Person primitives at
-    :mod:`orchestrator.observability` extended with optional
-    ``event_class_index`` kwarg per ADR-0067 D361.
-
-    Cells (per primitive):
-    * Omitted kwarg → ledger-walk path preserved (ADR-0059 D325
-      READ-ONLY contract).
-    * Provided kwarg → index path produces IDENTICAL snapshot list
-      (byte-identical determinism per ADR-0031 D140).
-
-    The behavioral-passthrough discipline per W5 P1-1 + W7 P1-1
-    closures requires verification that BOTH paths produce equivalent
-    results — the production default (ledger walk) is exercised
-    transparently.
-    """
-
-    def _ledger_with_events(self, tmp_path, events):
-        from orchestrator.ledger import Ledger as _Ledger
-        led = _Ledger(tmp_path / "ledger")
-        for ev in events:
-            led.append(ev)
-        return led
-
-    def test_register_fidelity_index_path_matches_ledger_path_per_w8_d361(
-        self, tmp_path,
-    ):
-        """ADR-0067 D361 — the index-vs-ledger paths produce
-        byte-identical snapshot lists."""
-        events = [
-            {"type": "draft_quality_scored", "person_id": "p-1",
-             "register": "cold-pitch", "voice_fidelity_score": 0.85,
-             "state": "ready", "channel": "email",
-             "ts": "2026-05-27T10:00:00.000Z"},
-            {"type": "draft_quality_scored", "person_id": "p-2",
-             "register": "congrats", "voice_fidelity_score": 0.90,
-             "state": "ready", "channel": "email",
-             "ts": "2026-05-27T10:01:00.000Z"},
-            # Decoy: different event class should NOT affect snapshots.
-            {"type": "enrolled", "person_id": "p-3",
-             "ts": "2026-05-27T10:02:00.000Z"},
-        ]
-        led = self._ledger_with_events(tmp_path, events)
-        event_class_idx, _ = _runner._materialize_indexes(led)
-        since = datetime(2026, 5, 27, tzinfo=timezone.utc)
-
-        ledger_snaps = _observability.collect_per_person_register_fidelity_snapshots(
-            led, since=since,
-        )
-        index_snaps = _observability.collect_per_person_register_fidelity_snapshots(
-            led, since=since, event_class_index=event_class_idx,
-        )
-        assert ledger_snaps == index_snaps
-        assert len(ledger_snaps) == 2  # p-1 + p-2
-
-    def test_claim_type_hallucination_index_path_matches_ledger_path_per_w8_d361(
-        self, tmp_path,
-    ):
-        """ADR-0067 D361 — index-vs-ledger paths produce identical
-        snapshots for ``hallucination_detected`` consumer."""
-        events = [
-            {"type": "hallucination_detected", "person_id": "p-1",
-             "register": "cold-pitch", "channel": "email",
-             "uncited_claims": [{"claim_type": "date_reference",
-                                  "claim_text": "REDACTED"}],
-             "ts": "2026-05-27T10:00:00.000Z"},
-            # Decoy
-            {"type": "draft_quality_scored", "person_id": "p-1",
-             "register": "cold-pitch", "voice_fidelity_score": 0.8,
-             "state": "ready", "ts": "2026-05-27T10:01:00.000Z"},
-        ]
-        led = self._ledger_with_events(tmp_path, events)
-        event_class_idx, _ = _runner._materialize_indexes(led)
-        since = datetime(2026, 5, 27, tzinfo=timezone.utc)
-
-        ledger_snaps = _observability.collect_per_person_claim_type_hallucination_snapshots(
-            led, since=since,
-        )
-        index_snaps = _observability.collect_per_person_claim_type_hallucination_snapshots(
-            led, since=since, event_class_index=event_class_idx,
-        )
-        assert ledger_snaps == index_snaps
-
-    def test_layer_5_drift_index_path_matches_ledger_path_per_w8_d361(
-        self, tmp_path,
-    ):
-        """ADR-0067 D361 — index-vs-ledger paths produce identical
-        snapshots for ``reconcile_drift`` consumer."""
-        events = [
-            {"type": "reconcile_drift", "person_id": "p-1",
-             "reason": "ready_without_draft_ready_event",
-             "ts": "2026-05-27T10:00:00.000Z"},
-            # Decoy.
-            {"type": "enrolled", "person_id": "p-2",
-             "ts": "2026-05-27T10:01:00.000Z"},
-        ]
-        led = self._ledger_with_events(tmp_path, events)
-        event_class_idx, _ = _runner._materialize_indexes(led)
-        since = datetime(2026, 5, 27, tzinfo=timezone.utc)
-
-        ledger_snaps = _observability.collect_per_person_layer_5_drift_snapshots(
-            led, since=since,
-        )
-        index_snaps = _observability.collect_per_person_layer_5_drift_snapshots(
-            led, since=since, event_class_index=event_class_idx,
-        )
-        assert ledger_snaps == index_snaps
-
-    def test_default_kwarg_preserves_ledger_walk_per_w8_d361(self, tmp_path):
-        """ADR-0067 D361 + ADR-0059 D325 READ-ONLY contract — the
-        kwarg's default of None preserves the existing ledger-walk
-        behavior verbatim. Pre-Week-8 callers (the funnel CLI; external
-        operator invocations) work unchanged."""
-        events = [
-            {"type": "draft_quality_scored", "person_id": "p-1",
-             "register": "cold-pitch", "voice_fidelity_score": 0.85,
-             "state": "ready", "channel": "email",
-             "ts": "2026-05-27T10:00:00.000Z"},
-        ]
-        led = self._ledger_with_events(tmp_path, events)
-        since = datetime(2026, 5, 27, tzinfo=timezone.utc)
-
-        # Default kwarg — NO event_class_index.
-        snaps = _observability.collect_per_person_register_fidelity_snapshots(
-            led, since=since,
-        )
-        assert len(snaps) == 1
-        assert snaps[0].person_id == "p-1"
-        assert snaps[0].register == "cold-pitch"
-
-    def test_index_path_empty_for_class_returns_empty_snapshots_per_w8_d361(
-        self, tmp_path,
-    ):
-        """ADR-0067 D361 — when the index has NO events for the
-        primitive's target class, the snapshot list is empty (no
-        spurious snapshots from other classes in the index)."""
-        events = [
-            # No draft_quality_scored events — only enrolled events.
-            {"type": "enrolled", "person_id": "p-1",
-             "ts": "2026-05-27T10:00:00.000Z"},
-        ]
-        led = self._ledger_with_events(tmp_path, events)
-        event_class_idx, _ = _runner._materialize_indexes(led)
-        since = datetime(2026, 5, 27, tzinfo=timezone.utc)
-
-        snaps = _observability.collect_per_person_register_fidelity_snapshots(
-            led, since=since, event_class_index=event_class_idx,
-        )
-        assert snaps == []
 
 
 # ---------------------------------------------------------------------------
@@ -5649,9 +5499,8 @@ class TestInstallIndexInvalidationObserver:
         # Append cross-pillar event mix.
         events = [
             {"type": "enrolled", "person_id": "p-1"},
-            {"type": "draft_quality_scored", "person_id": "p-2",
-             "register": "cold-pitch", "voice_fidelity_score": 0.91,
-             "state": "ready", "channel": "email"},
+            {"type": "tier_suggested", "person_id": "p-2",
+             "tier": "A", "channel": "email"},
             {"type": "send_intent", "person_id": "p-1",
              "channel": "email", "intent_id": "snd_w9_2"},
             {"type": "send_confirmed", "person_id": "p-1",

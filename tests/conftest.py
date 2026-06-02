@@ -44,23 +44,10 @@ for _name in ("identity", "state_machine",
               # module under the bare name, and the conftest's
               # `if _name in sys.modules: continue` then skips the
               # aliasing — leaving two distinct DiscoveryLineage classes
-              # and isinstance() checks fail silently). Pillar F
-              # primitives follow the same convention — `voice_corpus`
-              # ships Pillar F Week 2 and is reserved here so the first
-              # consumer (the /draft-outreach SKILL.md Phase 4
-              # invocation) doesn't create a second module under the
-              # bare name. Per ADR-0038 D182 audit category 4.
+              # and isinstance() checks fail silently). Per ADR-0038
+              # D182 audit category 4.
               "discovery_dedup", "discovery_lineage",
               "email_verification_cache", "tier_assignment",
-              "voice_corpus",
-              # Pillar F Week 6 — ``draft_quality`` ships the
-              # hallucination-detection Layer 2-3 primitive per
-              # ADR-0043 D212. The conftest aliasing reservation
-              # follows the same convention as ``voice_corpus``
-              # (the Week 2 primitive) — the dual-module-identity
-              # hazard per ADR-0038 D182 audit category 4 applies
-              # to every new ``orchestrator/`` sibling module.
-              "draft_quality",
               "enrollment",
               "backfill_identity", "ledger", "backfill_ledger",
               "reconcile", "policy", "reply_classifier",

@@ -16,13 +16,7 @@ PRODUCE reply events that Pass G CONSUMES. Pillar D Week 4-5 (ADR-
 YAML for `category=unsubscribe` classifications) + Pass N
 (conversation state machine — emits `conversation_state_changed`
 events per thread); Pass C also gains a `conversation_status:` heal
-extension. Pillar F Week 12 (ADR-0049) extends Pass C with the
-**Layer 5 hallucination-detection backstop** (per ADR-0038 D180's
-FIVE-layer defense): the final structural backstop that refuses
-heal-to-`ready` without a corresponding `draft_ready` event in the
-ledger (the Layer 4 emit-guard's per-Person audit trail per ADR-0047
-D246); absence surfaces `reconcile_drift` with `reason:
-"ready_without_draft_ready_event"`. Pass K is the deferred Cal.com slot
+extension. Pass K is the deferred Cal.com slot
 per ADR-0027 D113; Pass L is intentionally skipped (letter-sequence
 preserves the deferred Pass K's operator-readability).
 
@@ -30,10 +24,8 @@ Pillar G Week 6 (ADR-0055 D300-D306) adds per-stage OTel span
 instrumentation at every reconcile pass call site via
 :func:`observability.traced_stage` — operators tracing the reconcile
 loop see each pass (A/B/C/D/E/F/G/H/I/J/M/N/O) as a named span +
-the per-pass latency/error attributes. The Layer 5 hallucination-
-detection backstop's ``reconcile_drift`` emit traces under the same
-span so the per-Person Layer 5 refusal narrative is operator-
-visible. Privacy invariant per ADR-0054 D297 holds across spans.
+the per-pass latency/error attributes. Privacy invariant per ADR-0054
+D297 holds across spans.
 
 The send path is two-phase (`<channel>_intent` → external API →
 `<channel>_confirmed`) and any moving part (vault frontmatter, ledger,
@@ -1019,85 +1011,20 @@ def _walk_people_dir(people_dir: Path) -> Iterable[Path]:
         yield note
 
 
-# Per ADR-0038 D180 Layer 5 + ADR-0049 D262 — the FINAL structural
-# backstop of the FIVE-layer hallucination-detection defense. A Touch
-# note at ``pipeline_stage: ready`` MUST have a corresponding
-# ``draft_ready`` event (Pillar F Week 10 Layer 4 emit-guard's per-
-# Person audit trail per ADR-0047 D246) in the ledger; absence means
-# the Layer 4 emit-guard was bypassed (per ADR-0047 §Risks R030).
-# Pass C consults this predicate before ratifying any heal-to-ready
-# outcome.
-#
-# Per Pillar F Week 12 follow-up P2-2: when vault claims ``ready`` AND
-# ledger derives a different stage (e.g., ``drafted``) AND no
-# ``draft_ready`` event exists, Layer 5 PRE-EMPTS the existing
-# ``vault_ahead_of_ledger`` drift surface because the Layer 5 check
-# fires UNCONDITIONALLY on ``vault_stage == "ready"`` (regardless of
-# ``l_rank`` vs ``v_rank``). Operators / Pillar I audit-tooling
-# filtering ``reconcile_drift.reason == "vault_ahead_of_ledger"`` MUST
-# also subscribe to ``reason == "ready_without_draft_ready_event"`` to
-# preserve the prior operational visibility of refusals; the precedence
-# is pinned by ``test_layer_5_reason_preempts_vault_ahead_of_ledger``
-# at tests/test_reconcile.py.
-_LAYER_5_DRIFT_REASON: str = "ready_without_draft_ready_event"
-
-
-# Per Pillar F Week 12 follow-up P3-4 — closed-set of ``reconcile_drift``
-# ``reason`` values for the per-Pass-C drift surfaces. Pillar G
-# observability dashboards + Pillar I per-tenant audit-tooling consume
-# ``reconcile_drift`` events filtered by ``reason`` per ADR-0049 D263;
-# this frozenset is the regression-barrier against future contributors
-# adding a NEW ``reason`` value without ADR coordination. A new value
-# MUST extend this frozenset + the consumer surface migration MUST
-# document at the ADR that adds it.
+# Closed-set of ``reconcile_drift`` ``reason`` values for the per-Pass-C
+# drift surfaces. Pillar G observability dashboards + Pillar I per-tenant
+# audit-tooling consume ``reconcile_drift`` events filtered by ``reason``
+# per ADR-0049 D263; this frozenset is the regression-barrier against
+# future contributors adding a NEW ``reason`` value without ADR
+# coordination. A new value MUST extend this frozenset + the consumer
+# surface migration MUST document at the ADR that adds it.
 _DRIFT_REASONS: frozenset[str] = frozenset({
     # Pass C pipeline_stage heal — vault has a stage, ledger has none.
     "vault_has_stage_but_ledger_empty",
     # Pass C pipeline_stage heal — vault claims a more-advanced stage
     # than ledger can justify (v_rank > l_rank).
     "vault_ahead_of_ledger",
-    # Pillar F Week 12 Layer 5 per ADR-0049 D262 — vault claims (or
-    # ledger derives) ``ready`` without a ``draft_ready`` event.
-    "ready_without_draft_ready_event",
 })
-
-
-def _person_has_draft_ready_event(
-    led: _ledger.Ledger, person_id: str,
-) -> bool:
-    """Return True iff the ledger has at least one ``draft_ready`` event
-    for ``person_id``.
-
-    Per ADR-0038 D180 Layer 5 + ADR-0049 D262 — the structural backstop
-    predicate at Pass C. The ``draft_ready`` event class ships at
-    Pillar F Week 10 per ADR-0047 D246 (the Layer 4 emit-guard's
-    per-Person audit trail); presence certifies that
-    :func:`draft_quality.build_draft_ready_payload` ran for this
-    Person + its verdict was emit (not Layer4GuardRefusal).
-
-    The query walks the per-Person index per ADR-0010 D17 +
-    ADR-0047 D251 (ZERO new migrations at Week 10 — the
-    ``draft_ready`` event carries ``person_id`` + is indexed via
-    ``_idx_person``). Pillar F Week 12 reuses the existing index;
-    ZERO new migrations at Week 12 per ADR-0049 D264.
-
-    **Permissive on ``_emitted_by``** per the Pillar F Week 12 follow-
-    up P3-2 finding: this predicate accepts ANY ``draft_ready`` event
-    regardless of the ``_emitted_by`` field (per ADR-0049 §Risks the
-    Layer 5 false-negative bound is reactive — Pillar I per-tenant
-    audit-tooling greps ``_emitted_by != "draft_quality"`` for non-
-    factory emissions). The structural backstop is event-presence, not
-    factory-emission certification; tightening the predicate to check
-    ``_emitted_by == "draft_quality"`` would be a future Pillar I
-    extension if multi-tenant audit pressure surfaces. The current
-    permissive behavior is pinned by
-    ``test_person_has_draft_ready_event_permissive_on_emitted_by`` at
-    tests/test_reconcile.py.
-    """
-    for ev in led.all_events_for_person(person_id):
-        if ev.type == "draft_ready":
-            return True
-    return False
 
 
 def run_pass_c(
@@ -1129,9 +1056,9 @@ def run_pass_c(
     writes).
     """
     # Per ADR-0055 D301 — wrap Pass C in a review-stage span so the
-    # Layer 5 backstop integration per ADR-0049 D262 is operator-
-    # visible via the OTel tracing backend. Pass C is per-Person
-    # heal-pass; the per-Person attributes flow through the inner
+    # heal-pass is operator-visible via the OTel tracing backend.
+    # Pass C is per-Person heal-pass; the per-Person attributes flow
+    # through the inner
     # per-Person operations via the standard Pillar A-F event
     # emission surfaces (the per-Person ``reconcile_drift`` /
     # ``reconcile_healed`` events carry the ``person_id`` field).
@@ -1219,50 +1146,6 @@ def _run_pass_c_inner(
 
         v_rank = STAGE_RANK.get(vault_stage or "", -1)
         l_rank = STAGE_RANK.get(ledger_stage or "", -1)
-
-        # Per ADR-0038 D180 Layer 5 + ADR-0049 D262 — the FINAL
-        # structural backstop of the FIVE-layer hallucination-
-        # detection defense. When this per-Person Pass C iteration
-        # would ratify ``pipeline_stage: ready`` (either vault
-        # already claims it, OR ledger would heal vault forward to
-        # it), require a ``draft_ready`` event in the ledger
-        # (Pillar F Week 10 Layer 4 emit-guard's per-Person audit
-        # trail per ADR-0047 D246). Absence is the Layer 4 bypass
-        # case per ADR-0047 §Risks R030 — refuse the heal + surface
-        # the drift for operator review. The ``draft_ready`` event
-        # carries ``person_id`` + is indexed via the existing
-        # ``_idx_person`` per ADR-0047 D251 (ZERO new migrations at
-        # Week 12 per ADR-0049 D264).
-        ratifies_ready = (
-            vault_stage == "ready"
-            or (ledger_stage == "ready" and l_rank >= v_rank)
-        )
-        if (
-            ratifies_ready
-            and not _person_has_draft_ready_event(led, person_id)
-        ):
-            assert _LAYER_5_DRIFT_REASON in _DRIFT_REASONS  # P3-4 pin.
-            finding = {
-                "kind": "reconcile_drift",
-                "person_id": person_id,
-                "note_path": str(note),
-                "vault_stage": vault_stage,
-                "ledger_stage": ledger_stage,
-                "conflict": True,
-                "reason": _LAYER_5_DRIFT_REASON,
-            }
-            result.findings.append(finding)
-            if apply:
-                _safe_append(led, {
-                    "type": "reconcile_drift",
-                    "person_id": person_id,
-                    "note_path": str(note),
-                    "vault_stage": vault_stage,
-                    "ledger_stage": ledger_stage,
-                    "conflict": True,
-                    "reason": _LAYER_5_DRIFT_REASON,
-                }, result.errors)
-            continue
 
         if ledger_stage is None and vault_stage is None:
             continue

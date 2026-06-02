@@ -9,7 +9,7 @@
 # Factory install location
 # ============================================================
 factory:
-  # Where you cloned this repo. Skills use this to find voice_retrieve.py + other scripts.
+  # Where you cloned this repo. Skills use this to find reference-examples.md + other files.
   home: "~/code/outreach-factory"
 
 # ============================================================
@@ -65,60 +65,17 @@ vault:
   active_subdir: "🟧 Active"       # in-conversation prospects
 
 # ============================================================
-# Voice translator — your email corpus + retrieval script
+# Voice: the reference example the humanizer anchors to
 # ============================================================
 voice:
-  # Directory containing embeddings.npy + index.json (your built corpus output).
-  # See {factory.home}/voice/README.md for the manual build path from a Gmail
-  # Takeout mbox export. Pillar F Week 1 (ADR-0038 D178) named the canonical
-  # location: ~/.outreach-factory/voice-corpus/ — operators applying the
-  # canonical-location migration at their own cadence; no automatic move.
-  corpus_dir: "/path/to/voice/corpus"
-  # Python binary with sentence-transformers + numpy installed
-  python_bin: "/path/to/venv/bin/python3"
-  # Path to a single email that defines your canonical voice (optional)
-  voice_anchor_path: ""
-  # Pillar F Week 8 — the embedding-retrieval primitive is the framework
-  # default. (orchestrator/voice_corpus.py replaces the heuristic in
-  # orchestrator/voice_retrieve.py with per-register / per-channel filtering +
-  # a deterministic-clock-controlled recency multiplier per ADR-0038 D179 +
-  # the Week 4 per-register threshold loader per ADR-0041 D204 + the Week 8
-  # per-draft fidelity scoring primitive per ADR-0045 D230.)
-  #
-  # Default flipped from false → true at Pillar F Week 8 per ADR-0039
-  # §Existing-operator seed + ADR-0045 D232. Operators with corpora not yet
-  # tagged with `register` + `channel` schema fields per ADR-0038 D178 opt
-  # OUT by setting this to false (the legacy heuristic at
-  # orchestrator/voice_retrieve.py stays available through the Pillar F
-  # exit gate at Week 12; deprecation timing TBD per operator-transition
-  # cadence).
-  use_embedding_primitive: true
-  # Pillar F Week 2 — embedding model used by orchestrator/voice_corpus.py.
-  # Default is the local CPU-only sentence-transformers model — zero per-call
-  # cost. Cloud models (e.g., OpenAI's "text-embedding-3-small") work too but
-  # incur per-rebuild + per-retrieve cost; pricing-table extension per ADR-0006
-  # is required when opting in to a paid model (per R025 mitigation).
-  embed_model: "BAAI/bge-small-en-v1.5"
-  # Pillar F Week 2 — operator-controlled auto-rebuild on metadata mismatch.
-  # When true, retrieve_voice_exemplars rebuilds the corpus' embeddings.npy +
-  # metadata.json BEFORE proceeding with the lookup if the cache's embed_model
-  # / schema_version / corpus_count diverges from the runtime expectation.
-  # Default false — refuse-loud per R026 mitigation; operators opt in
-  # deliberately. Rebuild can also be triggered manually via:
-  #   python orchestrator/voice_corpus.py rebuild --corpus-dir <path>
-  rebuild_on_metadata_mismatch: false
-  # Pillar F Week 4 — per-register voice-fidelity threshold YAML path per
-  # ADR-0041 D199 + ADR-0038 D184(a). The threshold dict is loaded by
-  # orchestrator.voice_corpus.load_voice_thresholds; downstream consumers
-  # (Pillar F Week 6+ hallucination-detection + Week 8+ fidelity-scoring)
-  # compare each draft's fidelity score against the per-register threshold
-  # to decide whether the draft advances to `ready`. Defaults at Week 4:
-  # cold-pitch ≥0.70 / congrats ≥0.65 / re-engagement ≥0.72 / reply ≥0.70 /
-  # public-comment ≥0.60 (per the reference operator's curated corpus at ship time). Copy
-  # config-template/voice_thresholds.example.yml to the path below and tune
-  # per-register as your corpus grows; the loader falls back to the
-  # default-shipped template with stderr warning when this path is absent.
-  thresholds_path: "~/.outreach-factory/voice_thresholds.yml"
+  # Optional. Path to a markdown file holding one short, human-written
+  # outreach example per register (cold-pitch / congrats / re-engagement /
+  # reply / public-comment). In Phase 4 of /draft-outreach, the humanizer
+  # rewrites the assembled draft in a fresh context anchored to the single
+  # example whose label matches the current register. Point this at your own
+  # file to anchor on your own voice; if empty, the skill defaults to
+  # skills/draft-outreach/reference-examples.md in the factory repo.
+  reference_example_path: "skills/draft-outreach/reference-examples.md"
 
 # ============================================================
 # ICP definitions — pointers to your strategy docs (used by /find-leads)

@@ -12,7 +12,7 @@
 #   3. "What did the gate refuse this week?" — per-event-class 24h
 #      breakdown (extracts refusal events: `reconcile_drift`,
 #      `policy_blocked`, `cooldown_blocked`, `dedup_blocked`,
-#      `bounce_detected`, `hallucination_detected`).
+#      `bounce_detected`).
 #
 # Plus the reconcile success ratio SLO signal per PILLAR-PLAN §2
 # Pillar G (the framework's 99% reconcile success threshold).
@@ -130,8 +130,8 @@ panels:
       refuse this week?". Per-event-class 24h cumulative counts via
       PromQL's increase() function. Operators inspect the refusal
       event classes (reconcile_drift, policy_blocked,
-      cooldown_blocked, dedup_blocked, bounce_detected,
-      hallucination_detected) to understand what was filtered.
+      cooldown_blocked, dedup_blocked, bounce_detected) to
+      understand what was filtered.
     type: barchart
     gridPos: { x: 0, y: 16, w: 24, h: 8 }
     targets:

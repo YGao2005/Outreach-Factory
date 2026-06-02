@@ -4,9 +4,8 @@
 
 - macOS or Linux with Claude Code installed (interactive CLI)
 - Claude Max or Pro subscription (factory uses subscription billing, not API)
-- Python 3.11+
+- Python 3.11+ (the only local Python is CPU-only and light, no model downloads)
 - A markdown-based CRM (Obsidian vault recommended, but any directory of `.md` files with frontmatter works)
-- Your own email corpus for the voice translator (see "Voice corpus setup" below)
 
 ## Quick install
 
@@ -24,7 +23,7 @@ pip install -r orchestrator/requirements.txt
 ./bin/outreach-factory config
 
 # 4. Edit the copied files:
-#      ~/.outreach-factory/config.yml   company, founder, vault, voice corpus paths
+#      ~/.outreach-factory/config.yml   company, founder, vault paths
 #      ~/.outreach-factory/.env         secrets (Reoon / Resend / suppression), if you use them
 
 # 5. Bootstrap the reply classifier pattern file (Pillar D Week 2).
@@ -112,30 +111,27 @@ verify the MCPs are *configured*, but it can't probe live MCP servers — they
 are session-scoped to a Claude Code session. Reachability is tested
 implicitly when a skill first invokes a server.
 
-## Voice corpus setup
+## The humanizer (the de-AI step)
 
-The voice translator retrieves the top-5 most-similar emails from your own
-corpus to ground tone rewrites. To build it:
+There is no voice-corpus build step. The thing that keeps drafts from reading
+as AI-written is the humanizer pass: after `/draft-outreach` assembles a plain
+prose draft, it hands that draft to the humanizer in a fresh context, along
+with an anti-tell checklist and a single reference example of a good
+human-written touch in the same register. The humanizer rewrites whatever
+still reads as machine-written and returns the result verbatim.
 
-1. Export your sent mail (Gmail Takeout `.mbox`).
-2. Build embeddings + index with the flag-driven scripts documented in
-   [voice/README.md](voice/README.md): `parse_mbox`, then `refine`, `curate`,
-   `build_index`. They default to writing `~/.outreach-factory/voice-corpus/`.
-3. Point `voice.corpus_dir` in your config at that directory (the one holding
-   `embeddings.npy` + `index.json`).
-
-Without a corpus the voice translator falls back to plain agent-only rewriting
-(lower fidelity but still works).
+Nothing to install for this: the humanizer runs inline in the agent's own LLM
+call (subscription-billed via your Claude Code session, no Anthropic API call).
+It is available as the `/humanizer` skill and runs automatically as the final
+pass of `/draft-outreach`. For tier-S high-stakes sends, `/draft-outreach
+--manual` emits scaffolds only so you can write the prose yourself.
 
 ## Verify install
 
 ```bash
-# Run the preflight — covers config, factory, vault, deps, MCPs, and
+# Run the preflight, covering config, factory, vault, deps, MCPs, and
 # all optional features.
 python3 scripts/doctor.py
-
-# Should load without error
-python3 orchestrator/voice_retrieve.py --help
 
 # In Claude Code, restart your session and the skills should appear:
 # /draft-outreach   /research-prospect   /find-leads   /humanizer
