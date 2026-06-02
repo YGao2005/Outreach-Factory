@@ -9,6 +9,8 @@ venv/
 config.yml
 config.local.yml
 .outreach-factory/
+# but DO track GitHub's fixed-name issue-template chooser config
+!.github/ISSUE_TEMPLATE/config.yml
 
 # Secrets — never commit a real .env (config-template/.env.example is the template)
 .env
