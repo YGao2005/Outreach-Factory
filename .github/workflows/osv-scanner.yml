@@ -1,4 +1,4 @@
-# Pillar J W3 (J3; ADR-0078 D390) — OSV-Scanner dependency vulnerability scan.
+# Pillar J W3 (J3; ADR-0078 D390): OSV-Scanner dependency vulnerability scan.
 #
 # Scans the repo's pip manifests against the OSV database on push, PR, and a
 # weekly schedule, using the official OSV-Scanner reusable workflows. This is
@@ -6,8 +6,16 @@
 # human disposition of findings is the v1-release gate (ADR-0076 D384), NOT a
 # code assertion in the golden-path harness.
 #
-# Pairs with Dependabot (.github/dependabot.yml — opens update PRs) and the
-# gitleaks pre-commit hook (.pre-commit-config.yaml — secrets). The reusable
+# Report-only (fail-on-vuln: false) to MATCH that ADR-0078 D390 intent: OSV
+# findings upload to the Security tab (Code Scanning) and Dependabot opens the
+# update PRs, but a finding does NOT fail CI. OSV scans the declared requirement
+# FLOORS, so an unpinned `>=` dep surfaces advisories fixed above its floor, and
+# a compound range (e.g. aiohttp>=3.14.0,<4) is recorded as the unparseable
+# version "3.14.0,<4" and reports every advisory even when the resolved install
+# is patched. Those are false-positives of a floor scan, not a real exposure.
+#
+# Pairs with Dependabot (.github/dependabot.yml: opens update PRs) and the
+# gitleaks pre-commit hook (.pre-commit-config.yaml: secrets). The reusable
 # workflow ref is bumped by the Dependabot github-actions ecosystem.
 name: osv-scanner
 
@@ -29,6 +37,8 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v1.9.2
     with:
+      # Report-only (ADR-0078 D390); still uploads SARIF to the Security tab.
+      fail-on-vuln: false
       scan-args: |-
         --recursive
         ./
@@ -37,6 +47,8 @@ jobs:
     if: ${{ github.event_name != 'pull_request' }}
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.2
     with:
+      # Report-only (ADR-0078 D390); still uploads SARIF to the Security tab.
+      fail-on-vuln: false
       scan-args: |-
         --recursive
         ./

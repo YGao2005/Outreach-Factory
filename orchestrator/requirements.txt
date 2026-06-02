@@ -42,5 +42,7 @@ aiohttp>=3.14.0,<4
 # so the module still loads without them, but they are supported (not
 # optional) runtime deps. The `os_keyring` backend additionally needs
 # `keyring` (install separately; only the OS-native keystore path uses it).
-cryptography>=42
+# cryptography floor is 44.0.1 (not just >=42): it clears the OSV advisories
+# fixed across 42.0.x-44.0.1, incl. the bundled-OpenSSL CVE-2024-12797.
+cryptography>=44.0.1
 argon2-cffi>=23
