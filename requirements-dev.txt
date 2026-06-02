@@ -6,4 +6,4 @@
 # Floor raised to the patched version: CVE-2025-71176 (GHSA-6w46-j5rx-g56g),
 # a predictable /tmp/pytest-of-{user} DoS/priv-esc, is fixed in pytest 9.0.3.
 pytest>=9.0.3
-hypothesis>=6.0    # property-based testing (Pillar A cooldown DST safety, etc.)
+hypothesis>=6.155.1    # property-based testing (Pillar A cooldown DST safety, etc.)
