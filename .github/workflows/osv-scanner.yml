@@ -35,7 +35,7 @@ permissions:
 jobs:
   osv-scan-pr:
     if: ${{ github.event_name == 'pull_request' }}
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v1.9.2
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.8
     with:
       # Report-only (ADR-0078 D390); still uploads SARIF to the Security tab.
       fail-on-vuln: false
