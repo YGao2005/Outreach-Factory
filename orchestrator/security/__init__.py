@@ -1,5 +1,5 @@
-"""Pillar J Week 1 — security + compliance foundation (per ADR-0076
-D377-D387). Week 1 ships the **package shape** — the frozen
+"""Pillar J Week 1 - security + compliance foundation (per ADR-0076
+D377-D387). Week 1 ships the **package shape** - the frozen
 :class:`SecurityConfig` dataclass, the closed-sets, and the J1/J5/J6/J7/
 J8/R001 primitive signatures raising :exc:`NotImplementedError`; Weeks
 2-4 (+ the FENCED human-gated J5/J6/J4 builds) ship the bodies per
@@ -7,16 +7,16 @@ ADR-0076 D387's per-week trajectory table.
 
 Per the per-pillar-foundation precedent (Pillar D ADR-0025 + Pillar E
 ADR-0032 + Pillar F ADR-0038 + Pillar G ADR-0050 + Pillar H ADR-0060 +
-Pillar I ADR-0070 — each pillar's Week 1 ships module shape + closed-sets
+Pillar I ADR-0070 - each pillar's Week 1 ships module shape + closed-sets
 + signatures + cross-pillar surface audit + exit-criterion vehicle scope
 + load-bearing invariants + per-week trajectory table). This module is
 the canonical home for Pillar J's security + compliance primitives:
 
-* **J1 — OAuth refresh-and-retry middleware** (R002 mitigation):
+* **J1 - OAuth refresh-and-retry middleware** (R002 mitigation):
   :func:`send_with_token_rotation` wraps a per-channel send, catches a
   mid-batch ``401``/refresh error, refreshes the credential, retries
   ONCE, and emits ``auth_token_refreshed``. **The event class is REUSED
-  from Pillar I** — ADR-0070 D371 already enumerated ``auth_token_refreshed``
+  from Pillar I** - ADR-0070 D371 already enumerated ``auth_token_refreshed``
   in :data:`orchestrator.multi_tenant.TENANT_NEW_EVENT_CLASSES` (Pillar I
   pre-provisioned J1's emit class), so it is ALREADY in
   :data:`orchestrator.observability.EVENT_CLASS_CATALOG` and MUST NOT
@@ -24,8 +24,8 @@ the canonical home for Pillar J's security + compliance primitives:
   disjoint-from-catalog per ADR-0050 D273). J1 supersedes R002's
   ``oauth_rotated`` working name with the cataloged ``auth_token_refreshed``.
 
-* **J5 — encrypted-at-rest credentials** (FENCED; ADR-0076 D379):
-  :func:`resolve_keystore` selects the credential keystore backend —
+* **J5 - encrypted-at-rest credentials** (FENCED; ADR-0076 D379):
+  :func:`resolve_keystore` selects the credential keystore backend -
   the OS keyring (macOS Keychain / Linux Secret Service / Windows
   Credential Locker via the ``keyring`` library) when present, falling
   back to an Argon2id passphrase-derived key for Docker / CI / headless
@@ -35,29 +35,29 @@ the canonical home for Pillar J's security + compliance primitives:
   :func:`derive_person_data_key` derives the per-person data-encryption
   key (DEK) that J6 crypto-shreds.
 
-* **J6 — GDPR ``forget`` via tombstone + crypto-shred** (FENCED; depends
+* **J6 - GDPR ``forget`` via tombstone + crypto-shred** (FENCED; depends
   on J5; ADR-0076 D380 + ADR-0004 §"GDPR forget path" step 1):
   :func:`forget_person` runs the four-step ADR-0004 transaction under a
-  lock — (1) crypto-shred the person's DEK so the ciphertext PII in the
+  lock - (1) crypto-shred the person's DEK so the ciphertext PII in the
   append-only ledger becomes mathematically unrecoverable (the ledger
-  bytes are NEVER mutated — I2 is sacrosanct), (2) atomic
+  bytes are NEVER mutated - I2 is sacrosanct), (2) atomic
   ``suppression.forget_append`` (Pillar A; already implemented), (3)
   purge the vault Person + Touch notes, (4) emit ``gdpr_forget`` with a
   ``person_ref`` HASH (never cleartext ``person_id``) + the purge audit.
 
-* **J7 — CAN-SPAM footer + one-click unsubscribe** (ADR-0076 D381):
+* **J7 - CAN-SPAM footer + one-click unsubscribe** (ADR-0076 D381):
   :func:`build_canspam_footer` builds the physical-address body footer;
   :func:`build_list_unsubscribe_headers` builds the ``List-Unsubscribe``
   + ``List-Unsubscribe-Post: List-Unsubscribe=One-Click`` headers. The
   send path stamps BOTH onto every outbound email per the every-send
   invariant (suppression-on-unsubscribe is ALREADY enforced by Pillar D
-  ``auto_unsubscribe`` — J7 closes only the footer-content + header gap).
+  ``auto_unsubscribe`` - J7 closes only the footer-content + header gap).
 
-* **J8 — audit-log export** (ADR-0076 D382): :func:`export_audit_log`
+* **J8 - audit-log export** (ADR-0076 D382): :func:`export_audit_log`
   produces a read-only, redact-by-default compliance export over the
   ledger + emits ``audit_log_exported``.
 
-* **R001 — identity-graph false-merge audit** (ADR-0076 D383; assigned
+* **R001 - identity-graph false-merge audit** (ADR-0076 D383; assigned
   INTO Pillar J): :func:`detect_identity_keys_drift` +
   :func:`build_identity_keys_modified_payload` give every frontmatter
   identity-key mutation a ledger audit trail (``identity_keys_modified``)
@@ -66,22 +66,27 @@ the canonical home for Pillar J's security + compliance primitives:
 
 **J2 (gitleaks pre-commit) + J3 (dependabot + osv-scanner)** are CI /
 config surfaces (``.pre-commit-config.yaml`` + ``.github/dependabot.yml``
-+ ``.github/workflows/``) — they do NOT emit ledger events, so they have
++ ``.github/workflows/``) - they do NOT emit ledger events, so they have
 no event class here; :data:`SECURITY_SCANNERS` documents the closed-set.
 **J4 (SLSA attestation), J9 (external pen-test), legal sign-off** are
 FENCED / non-automatable (the v1-RELEASE gate, not the substrate gate).
 
 **Privacy invariant** per I8 + ADR-0050 D276(b) + ADR-0058 D323 +
 ADR-0060 D335 + ADR-0070 D375 (a): Pillar J's OWN event payloads carry
-NO cleartext per-Person PII — ``gdpr_forget`` carries ``person_ref``
+NO cleartext per-Person PII - ``gdpr_forget`` carries ``person_ref``
 (a hash), ``audit_log_exported`` is redact-by-default, and the per-tenant
 isolation contract extends to every Pillar J surface.
 """
 from __future__ import annotations
 
+import base64
+import contextlib
 import csv
+import fcntl
 import hashlib
 import json
+import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,30 +101,30 @@ EMITTED_BY = "security"
 
 #: Closed-set of the FOUR new Pillar J event classes per ADR-0076 D377.
 #:
-#: These are EMITTED by Pillar J but not yet CONSUMED — they MUST be
+#: These are EMITTED by Pillar J but not yet CONSUMED - they MUST be
 #: disjoint from :data:`orchestrator.observability.EVENT_CLASS_CATALOG`
 #: at Week 1 (per ADR-0050 D273; the catalog enumerates consumed classes,
 #: the new-class set enumerates emitted-not-yet-cataloged classes). The
 #: Week 3 catalog extension (ADR-0078) moves all four into the catalog
 #: per the per-pillar mirror constants parity discipline.
 #:
-#: * ``gdpr_forget`` — emit on a completed ``forget --person`` transaction
+#: * ``gdpr_forget`` - emit on a completed ``forget --person`` transaction
 #:   (J6); payload: ``person_ref`` (HASH, never cleartext ``person_id``)
 #:   + ``key_destroyed`` (bool) + ``n_events_shredded`` (int) +
 #:   ``suppression_appended`` (bool) + ``vault_purged`` (bool) +
 #:   ``forgotten_at_ts`` + ``audit`` (dict) + ``_emitted_by="security"``.
 #:   Named in ADR-0004 §"GDPR forget path" step 4; Pillar J is its home.
-#: * ``audit_log_exported`` — emit on a completed audit-log export (J8);
+#: * ``audit_log_exported`` - emit on a completed audit-log export (J8);
 #:   payload: ``exported_at_ts`` + ``n_events`` + ``out_format`` (member
 #:   of :data:`AUDIT_LOG_EXPORT_FORMATS`) + ``redacted`` (bool) +
 #:   ``since_ts`` + ``until_ts`` + ``_emitted_by="security"``. The export
 #:   itself is audit-worthy.
-#: * ``identity_keys_modified`` — emit on any frontmatter identity-key
+#: * ``identity_keys_modified`` - emit on any frontmatter identity-key
 #:   mutation (R001); payload: ``person_id`` + ``before_keys`` (list) +
 #:   ``after_keys`` (list) + ``actor`` (operator|reconcile|enrollment) +
 #:   ``modified_at_ts`` + ``_emitted_by="security"``. Named in the
 #:   RISK-REGISTER R001 mitigation plan.
-#: * ``credentials_reencrypted`` — emit on a credential key-rotation /
+#: * ``credentials_reencrypted`` - emit on a credential key-rotation /
 #:   re-encryption (J5); payload: ``tenant_id`` + ``key_id`` +
 #:   ``backend`` (member of :data:`CREDENTIAL_KEYSTORE_BACKENDS`) +
 #:   ``reencrypted_at_ts`` + ``_emitted_by="security"``.
@@ -133,10 +138,10 @@ SECURITY_NEW_EVENT_CLASSES: frozenset[str] = frozenset({
 
 #: Closed-set of credential-keystore backends per ADR-0076 D379.
 #:
-#: * ``"os_keyring"`` — the OS-native secret store via the ``keyring``
+#: * ``"os_keyring"`` - the OS-native secret store via the ``keyring``
 #:   library (macOS Keychain / Linux Secret Service / Windows Credential
 #:   Locker). Preferred when present.
-#: * ``"passphrase_argon2id"`` — an Argon2id passphrase-derived key for
+#: * ``"passphrase_argon2id"`` - an Argon2id passphrase-derived key for
 #:   Docker / CI / headless environments with no OS keyring. The Pillar I
 #:   per-tenant container has no keyring, so this fallback is MANDATORY
 #:   for the multi-tenant container model.
@@ -154,12 +159,12 @@ AUDIT_LOG_EXPORT_FORMATS: frozenset[str] = frozenset({
 
 
 #: Closed-set of the supply-chain scanners wired at J2/J3 (documentation
-#: only — these are CI/config surfaces that emit no ledger events) per
+#: only - these are CI/config surfaces that emit no ledger events) per
 #: ADR-0076 D378.
 #:
-#: * ``"gitleaks"`` — secret scanning in pre-commit (J2).
-#: * ``"dependabot"`` — dependency-update + vuln alerts (J3).
-#: * ``"osv-scanner"`` — OSV dependency vulnerability scanning (J3).
+#: * ``"gitleaks"`` - secret scanning in pre-commit (J2).
+#: * ``"dependabot"`` - dependency-update + vuln alerts (J3).
+#: * ``"osv-scanner"`` - OSV dependency vulnerability scanning (J3).
 SECURITY_SCANNERS: frozenset[str] = frozenset({
     "gitleaks",
     "dependabot",
@@ -185,29 +190,29 @@ class SecurityConfig:
 
     Fields:
 
-    * ``physical_mailing_address`` — the operator's CAN-SPAM-required
+    * ``physical_mailing_address`` - the operator's CAN-SPAM-required
       physical postal address, stamped into the body footer of every
       outbound email (J7). Refuse-loud (Week 4 body) if empty when a
-      send is attempted — a missing physical address is a CAN-SPAM
+      send is attempted - a missing physical address is a CAN-SPAM
       violation per the asymmetric-failure-cost principle (PILLAR-PLAN
       §0): a missed footer costs a legal liability, far more than a
       missed send.
-    * ``unsubscribe_base_url`` — the base URL the one-click-unsubscribe
+    * ``unsubscribe_base_url`` - the base URL the one-click-unsubscribe
       ``List-Unsubscribe`` header + the footer link point at (J7). The
       per-recipient token is appended by the send path.
-    * ``unsubscribe_mailto`` — optional ``mailto:`` fallback for the
+    * ``unsubscribe_mailto`` - optional ``mailto:`` fallback for the
       ``List-Unsubscribe`` header (RFC 2369 dual-form).
-    * ``keystore_backend`` — member of :data:`CREDENTIAL_KEYSTORE_BACKENDS`
+    * ``keystore_backend`` - member of :data:`CREDENTIAL_KEYSTORE_BACKENDS`
       naming the at-rest credential keystore (J5). Defaults to
       ``"os_keyring"``; the Pillar I container deployment overrides to
       ``"passphrase_argon2id"``.
-    * ``audit_export_dir`` — directory the J8 audit-log export writes to.
-    * ``tenant_id`` — optional per-tenant binding (Pillar I); when set,
+    * ``audit_export_dir`` - directory the J8 audit-log export writes to.
+    * ``tenant_id`` - optional per-tenant binding (Pillar I); when set,
       the per-tenant forget / export / keystore surfaces isolate per
       ADR-0070 D375 (a).
 
     The frozen invariant matches the Pillar H :class:`DaemonConfig` +
-    Pillar I :class:`TenantConfig` precedents — operators construct once;
+    Pillar I :class:`TenantConfig` precedents - operators construct once;
     the per-week bodies validate + consume.
 
     **Privacy invariant** per I8 + ADR-0070 D375 (a): ``SecurityConfig``
@@ -233,7 +238,7 @@ class SecurityConfig:
         ADR-0001 D2 on: ``keystore_backend`` outside
         :data:`CREDENTIAL_KEYSTORE_BACKENDS`, empty
         ``physical_mailing_address`` (a missing CAN-SPAM address is a legal
-        liability — the asymmetric-failure-cost principle), malformed
+        liability - the asymmetric-failure-cost principle), malformed
         ``unsubscribe_base_url`` (must be ``http(s)://``).
         """
         if self.keystore_backend not in CREDENTIAL_KEYSTORE_BACKENDS:
@@ -244,7 +249,7 @@ class SecurityConfig:
             )
         if not (self.physical_mailing_address or "").strip():
             raise ValueError(
-                "SecurityConfig: physical_mailing_address must be non-empty — a "
+                "SecurityConfig: physical_mailing_address must be non-empty - a "
                 "missing CAN-SPAM physical address is a legal liability (ADR-0076 "
                 "D381 + the asymmetric-failure-cost principle)."
             )
@@ -262,7 +267,7 @@ class CredentialKeystore(Protocol):
     :data:`CREDENTIAL_KEYSTORE_BACKENDS`: the OS keyring and the Argon2id
     passphrase-derived key. The Protocol is the TEST-ONLY substitution
     seam (mirrors the Pillar F ``embed_fn`` / ``retrieve_fn`` + the
-    Pillar I ``detect_fn`` seams) — tests inject an in-memory fake; the
+    Pillar I ``detect_fn`` seams) - tests inject an in-memory fake; the
     Docker container injects the passphrase backend; the dev box uses
     the OS keyring.
     """
@@ -278,14 +283,14 @@ class CredentialKeystore(Protocol):
         ...
 
     def destroy_key(self, key_id: str) -> bool:
-        """Crypto-shred ``key_id`` — the J6 erasure primitive. Returns
+        """Crypto-shred ``key_id`` - the J6 erasure primitive. Returns
         True iff a key was destroyed. After this, any ciphertext
         encrypted under ``key_id`` is mathematically unrecoverable."""
         ...
 
 
 # ---------------------------------------------------------------------------
-# J1 — OAuth refresh-and-retry middleware (R002 mitigation). Week 2 body
+# J1 - OAuth refresh-and-retry middleware (R002 mitigation). Week 2 body
 # (ADR-0077).
 # ---------------------------------------------------------------------------
 
@@ -298,7 +303,7 @@ _DEFAULT_TENANT_ID = "default"
 
 
 #: Substrings (lowercased) that mark an expired/invalid-credential failure
-#: on a send — the J1 refresh-and-retry trigger (R002). Covers the L0 test
+#: on a send - the J1 refresh-and-retry trigger (R002). Covers the L0 test
 #: seam's ``_Expired401("401 invalid_grant")`` AND the real send surface:
 #: ``gmail_client.send_email`` re-raises a googleapiclient ``HttpError`` as
 #: ``RuntimeError("Gmail API send failed: <HttpError 401 ...>")`` (see
@@ -319,7 +324,7 @@ _AUTH_ERROR_SIGNALS: tuple[str, ...] = (
 
 
 def _iso_z(dt: datetime) -> str:
-    """Millisecond-precision ISO-8601 UTC with a trailing ``Z`` —
+    """Millisecond-precision ISO-8601 UTC with a trailing ``Z`` -
     byte-identical to ``ledger._now_iso`` + ``multi_tenant._iso_z`` (the
     ADR-0031 determinism contract)."""
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
@@ -327,11 +332,11 @@ def _iso_z(dt: datetime) -> str:
 
 def _is_auth_error(exc: BaseException) -> bool:
     """True iff ``exc`` is an expired/invalid-credential failure (HTTP 401
-    or an OAuth refresh error) — the ONLY class J1 refreshes-and-retries on.
+    or an OAuth refresh error) - the ONLY class J1 refreshes-and-retries on.
     A non-auth failure (a 5xx, a network error, a bad recipient) is NOT
     retried here; it propagates unchanged so the caller's own retry/abort
     policy applies (refuse-loud per ADR-0001 D2)."""
-    # Structured status first — googleapiclient ``HttpError`` carries
+    # Structured status first - googleapiclient ``HttpError`` carries
     # ``.resp.status``; a custom client may expose ``.status_code`` / ``.code``.
     for _attr in ("status_code", "code"):
         if getattr(exc, _attr, None) == 401:
@@ -356,16 +361,16 @@ def send_with_token_rotation(
     """Wrap a single per-channel send with mid-batch token rotation (J1;
     R002). Run ``send_fn``; on a ``401`` / refresh error, call
     ``refresh_fn`` ONCE, emit ``auth_token_refreshed`` (the cataloged
-    Pillar I class — see module docstring), and retry. Guarantees the
+    Pillar I class - see module docstring), and retry. Guarantees the
     ledger ends consistent (no orphan ``send_intent`` without a matching
     ``send_confirmed`` / ``send_failed``) per R002's mitigation.
 
     Failure handling (refuse-loud per ADR-0001 D2):
 
-    * A NON-auth exception propagates immediately — J1 only owns credential
+    * A NON-auth exception propagates immediately - J1 only owns credential
       rotation, not generic retry.
     * After ``max_retries`` (default 1) auth failures the last exception
-      re-raises — no unbounded refresh loop on a credential that stays bad.
+      re-raises - no unbounded refresh loop on a credential that stays bad.
 
     The ``auth_token_refreshed`` emit lands AFTER ``refresh_fn`` actually
     runs (the ledger never claims a refresh that did not happen) and BEFORE
@@ -378,7 +383,7 @@ def send_with_token_rotation(
     while True:
         try:
             return send_fn()
-        except Exception as exc:  # noqa: BLE001 — re-raised unless _is_auth_error
+        except Exception as exc:  # noqa: BLE001 - re-raised unless _is_auth_error
             if attempts >= max_retries or not _is_auth_error(exc):
                 raise
             attempts += 1
@@ -400,7 +405,7 @@ def build_auth_token_refreshed_payload(
     Pillar I event class per ADR-0070 D371 (``auth_token_refreshed`` is
     already in the catalog + :data:`orchestrator.multi_tenant.TENANT_NEW_EVENT_CLASSES`);
     J1 is its first EMITTER. Payload shape mirrors ADR-0070 D371 line 85
-    EXACTLY — including ``_emitted_by="multi_tenant"`` (NOT ``"security"``):
+    EXACTLY - including ``_emitted_by="multi_tenant"`` (NOT ``"security"``):
     the class is multi_tenant-owned + cataloged, so it is deliberately
     excluded from :data:`SECURITY_NEW_EVENT_CLASSES` and keeps Pillar I's
     attribution regardless of which pillar emits it.
@@ -444,80 +449,357 @@ def build_auth_token_refreshed_payload(
 
 
 # ---------------------------------------------------------------------------
-# J5 — encrypted-at-rest credentials (FENCED; human-gated). ADR-0080 body.
+# J5 - encrypted-at-rest credentials. ADR-0080 D396/D397.
+#
+# Crypto libs (`cryptography`, `argon2-cffi`) are imported INSIDE these
+# functions, never at module top, so `import orchestrator.security` still
+# succeeds for the CAN-SPAM / J1 / J8 surfaces in an environment without the
+# crypto extras (ADR-0080 D396). They are first-class runtime deps regardless.
 # ---------------------------------------------------------------------------
+_DEK_BYTES = 32        # 256-bit AES-GCM data-encryption key
+_GCM_NONCE_BYTES = 12  # AES-GCM standard nonce width
+
+
+def _require_aesgcm():
+    """Lazy-import AES-GCM; raise an install-naming error if absent."""
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError as exc:  # pragma: no cover - only sans the dep
+        raise RuntimeError(
+            "J5 credential encryption requires the 'cryptography' package "
+            "(pip install cryptography). See ADR-0080 D396."
+        ) from exc
+    return AESGCM
+
+
+def _derive_master_key(passphrase: str, salt: bytes) -> bytes:
+    """Argon2id master key from a passphrase (ADR-0080 D396). Wraps the
+    per-key DEKs AT REST; never encrypts credentials directly."""
+    try:
+        from argon2.low_level import Type, hash_secret_raw
+    except ImportError as exc:  # pragma: no cover - only sans the dep
+        raise RuntimeError(
+            "The 'passphrase_argon2id' keystore requires the 'argon2-cffi' "
+            "package (pip install argon2-cffi). See ADR-0080 D396."
+        ) from exc
+    return hash_secret_raw(
+        secret=passphrase.encode("utf-8"),
+        salt=salt,
+        time_cost=3,
+        memory_cost=64 * 1024,  # 64 MiB
+        parallelism=4,
+        hash_len=_DEK_BYTES,
+        type=Type.ID,
+    )
+
+
+class _PassphraseKeystore:
+    """Argon2id-passphrase-derived keystore (J5; ADR-0080 D396).
+
+    The master key (Argon2id(passphrase, salt)) wraps per-key DEKs AT REST.
+    DEKs live in memory; persistence is opt-in via ``store_path`` (a JSON of
+    AES-GCM-wrapped DEKs + the salt). MANDATORY backend for Docker / CI /
+    headless deployments with no OS keyring. An ephemeral (no ``store_path``)
+    keystore loses its DEKs on process exit - pass ``store_path`` for
+    cross-process credential continuity.
+    """
+
+    backend = "passphrase_argon2id"
+
+    def __init__(self, passphrase, *, store_path=None, tenant_id=None):
+        if not (passphrase or "").strip():
+            raise ValueError(
+                "resolve_keystore(passphrase_argon2id) requires a non-empty "
+                "passphrase (ADR-0080 D396)."
+            )
+        self._passphrase = passphrase
+        self._tenant_id = tenant_id
+        self._store_path = Path(store_path) if store_path else None
+        self._keys: dict[str, bytes] = {}
+        self._salt: Optional[bytes] = None
+        self._master: Optional[bytes] = None
+        if self._store_path and self._store_path.exists():
+            self._load()
+
+    # Master key is lazy: only computed when persistence is actually touched,
+    # so the hermetic in-memory test path pays no Argon2id cost.
+    def _ensure_master(self) -> bytes:
+        if self._master is None:
+            if self._salt is None:
+                self._salt = os.urandom(16)
+            self._master = _derive_master_key(self._passphrase, self._salt)
+        return self._master
+
+    def get_key(self, key_id: str) -> bytes:
+        return self._keys[key_id]   # KeyError if absent / crypto-shredded
+
+    def put_key(self, key_id: str, key: bytes) -> None:
+        self._keys[key_id] = key
+        self._save()
+
+    def destroy_key(self, key_id: str) -> bool:
+        existed = self._keys.pop(key_id, None) is not None
+        self._save()
+        return existed
+
+    def _save(self) -> None:
+        if not self._store_path:
+            return
+        AESGCM = _require_aesgcm()
+        aes = AESGCM(self._ensure_master())
+        wrapped = {}
+        for kid, dek in self._keys.items():
+            nonce = os.urandom(_GCM_NONCE_BYTES)
+            wrapped[kid] = base64.b64encode(
+                nonce + aes.encrypt(nonce, dek, kid.encode("utf-8"))
+            ).decode("ascii")
+        payload = {
+            "backend": self.backend,
+            "salt": base64.b64encode(self._salt).decode("ascii"),
+            "wrapped_deks": wrapped,
+        }
+        self._store_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._store_path.with_suffix(self._store_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(self._store_path)
+
+    def _load(self) -> None:
+        AESGCM = _require_aesgcm()
+        payload = json.loads(self._store_path.read_text(encoding="utf-8"))
+        self._salt = base64.b64decode(payload["salt"])
+        aes = AESGCM(self._ensure_master())
+        for kid, blob in payload.get("wrapped_deks", {}).items():
+            raw = base64.b64decode(blob)
+            nonce, ct = raw[:_GCM_NONCE_BYTES], raw[_GCM_NONCE_BYTES:]
+            self._keys[kid] = aes.decrypt(nonce, ct, kid.encode("utf-8"))
+
+
+class _OSKeyringKeystore:
+    """OS-native keystore (J5; ADR-0080 D396) - DEKs in the OS secret store
+    via a lazily-imported ``keyring``. The dev-box default."""
+
+    backend = "os_keyring"
+
+    def __init__(self, *, service_name="outreach-factory", tenant_id=None):
+        self._service = (
+            f"{service_name}:{tenant_id}" if tenant_id else service_name
+        )
+        try:
+            import keyring
+        except ImportError as exc:
+            raise RuntimeError(
+                "The 'os_keyring' keystore backend requires the 'keyring' "
+                "package (pip install keyring), or use "
+                "backend='passphrase_argon2id' in headless/Docker. "
+                "See ADR-0080 D396."
+            ) from exc
+        self._keyring = keyring
+
+    def get_key(self, key_id: str) -> bytes:
+        val = self._keyring.get_password(self._service, key_id)
+        if val is None:
+            raise KeyError(key_id)
+        return base64.b64decode(val)
+
+    def put_key(self, key_id: str, key: bytes) -> None:
+        self._keyring.set_password(
+            self._service, key_id, base64.b64encode(key).decode("ascii")
+        )
+
+    def destroy_key(self, key_id: str) -> bool:
+        if self._keyring.get_password(self._service, key_id) is None:
+            return False
+        self._keyring.delete_password(self._service, key_id)
+        return True
+
+
 def resolve_keystore(
     *,
     backend: str = "os_keyring",
     passphrase: Optional[str] = None,
     service_name: str = "outreach-factory",
     tenant_id: Optional[str] = None,
+    store_path: "Optional[Path]" = None,
 ) -> CredentialKeystore:
-    """Select the at-rest credential keystore (J5; ADR-0076 D379).
+    """Select the at-rest credential keystore (J5; ADR-0080 D396).
 
     ``backend`` is a member of :data:`CREDENTIAL_KEYSTORE_BACKENDS`.
-    ``"os_keyring"`` uses the ``keyring`` library; ``"passphrase_argon2id"``
-    derives the master key from ``passphrase`` via Argon2id (MANDATORY in
-    Docker / CI / headless — no OS keyring exists there). FENCED build —
-    see ``.planning/RALPH-BLOCKED.md``.
+    ``"os_keyring"`` uses the (lazily-imported) ``keyring`` library;
+    ``"passphrase_argon2id"`` derives an Argon2id master key from
+    ``passphrase`` (MANDATORY in Docker / CI / headless - no OS keyring).
+    ``store_path`` (passphrase backend only) opts into at-rest DEK
+    persistence; absent it, the keystore is in-memory (ephemeral).
     """
-    raise NotImplementedError(
-        "resolve_keystore is a FENCED Pillar J build (J5; ADR-0080) — see "
-        ".planning/RALPH-BLOCKED.md; Week 1 ships the signature."
-    )
+    if backend not in CREDENTIAL_KEYSTORE_BACKENDS:
+        raise ValueError(
+            f"resolve_keystore: backend {backend!r} outside "
+            f"CREDENTIAL_KEYSTORE_BACKENDS {sorted(CREDENTIAL_KEYSTORE_BACKENDS)} "
+            "(ADR-0076 D379)."
+        )
+    if backend == "passphrase_argon2id":
+        return _PassphraseKeystore(
+            passphrase, store_path=store_path, tenant_id=tenant_id
+        )
+    return _OSKeyringKeystore(service_name=service_name, tenant_id=tenant_id)
 
 
 def derive_person_data_key(
     person_id: str, *, keystore: CredentialKeystore, tenant_id: Optional[str] = None,
 ) -> bytes:
-    """Derive / fetch the per-person data-encryption key (DEK) that
-    encrypts that person's PII fields in the ledger at rest (J5). J6
-    crypto-shreds this DEK to erase the person. FENCED build (ADR-0080).
-    """
-    raise NotImplementedError(
-        "derive_person_data_key is a FENCED Pillar J build (J5; ADR-0080) — "
-        "see .planning/RALPH-BLOCKED.md; Week 1 ships the signature."
-    )
+    """Derive / fetch the per-person data-encryption key (DEK) that encrypts
+    that person's PII fields at rest (J5; ADR-0080 D397). Mints + stores a
+    random 256-bit DEK on first use. J6 crypto-shreds this DEK
+    (``keystore.destroy_key(person_id)``) to erase the person, so the
+    ``key_id`` IS the ``person_id`` (the per-tenant binding lives in the
+    keystore service name, not the key_id)."""
+    try:
+        return keystore.get_key(person_id)
+    except KeyError:
+        dek = os.urandom(_DEK_BYTES)
+        keystore.put_key(person_id, dek)
+        return dek
 
 
 def encrypt_credential(
     plaintext: bytes, *, keystore: CredentialKeystore, key_id: str,
 ) -> bytes:
-    """Encrypt a credential (or PII field) at rest under ``key_id`` (J5).
-    FENCED build (ADR-0080)."""
-    raise NotImplementedError(
-        "encrypt_credential is a FENCED Pillar J build (J5; ADR-0080) — see "
-        ".planning/RALPH-BLOCKED.md; Week 1 ships the signature."
-    )
+    """AES-GCM-encrypt a credential at rest under ``key_id`` (J5; ADR-0080
+    D397). Mints the DEK on first use. Returns ``nonce || ciphertext`` with
+    ``key_id`` bound as additional authenticated data."""
+    AESGCM = _require_aesgcm()
+    try:
+        dek = keystore.get_key(key_id)
+    except KeyError:
+        dek = os.urandom(_DEK_BYTES)
+        keystore.put_key(key_id, dek)
+    nonce = os.urandom(_GCM_NONCE_BYTES)
+    ct = AESGCM(dek).encrypt(nonce, plaintext, key_id.encode("utf-8"))
+    return nonce + ct
 
 
 def decrypt_credential(
     ciphertext: bytes, *, keystore: CredentialKeystore, key_id: str,
 ) -> bytes:
-    """Decrypt a credential (or PII field) under ``key_id`` (J5). Raises
-    if ``key_id`` was crypto-shredded (the J6 erasure proof). FENCED
-    build (ADR-0080)."""
-    raise NotImplementedError(
-        "decrypt_credential is a FENCED Pillar J build (J5; ADR-0080) — see "
-        ".planning/RALPH-BLOCKED.md; Week 1 ships the signature."
-    )
+    """AES-GCM-decrypt under ``key_id`` (J5; ADR-0080 D397). Raises if the
+    key was crypto-shredded (the J6 erasure proof - the DEK is gone, so the
+    ciphertext is mathematically unrecoverable)."""
+    AESGCM = _require_aesgcm()
+    dek = keystore.get_key(key_id)  # KeyError if shredded -> unrecoverable
+    nonce, ct = ciphertext[:_GCM_NONCE_BYTES], ciphertext[_GCM_NONCE_BYTES:]
+    return AESGCM(dek).decrypt(nonce, ct, key_id.encode("utf-8"))
 
 
 def build_credentials_reencrypted_payload(
     *, tenant_id: str, key_id: str, backend: str, reencrypted_at_ts: str,
 ) -> dict[str, Any]:
-    """Build the ``credentials_reencrypted`` event payload (J5). FENCED
-    build (ADR-0080)."""
-    raise NotImplementedError(
-        "build_credentials_reencrypted_payload is a FENCED Pillar J build "
-        "(J5; ADR-0080) — see .planning/RALPH-BLOCKED.md."
-    )
+    """Build the ``credentials_reencrypted`` event payload (J5; ADR-0080
+    D400) - emitted on a credential key-rotation / re-encryption."""
+    if backend not in CREDENTIAL_KEYSTORE_BACKENDS:
+        raise ValueError(
+            f"build_credentials_reencrypted_payload: backend {backend!r} outside "
+            f"CREDENTIAL_KEYSTORE_BACKENDS {sorted(CREDENTIAL_KEYSTORE_BACKENDS)} "
+            "(ADR-0076 D379)."
+        )
+    if not (reencrypted_at_ts or "").strip():
+        raise ValueError(
+            "build_credentials_reencrypted_payload requires a non-empty "
+            "reencrypted_at_ts (ISO-8601 UTC)."
+        )
+    return {
+        "type": "credentials_reencrypted",
+        "tenant_id": tenant_id,
+        "key_id": key_id,
+        "backend": backend,
+        "reencrypted_at_ts": reencrypted_at_ts,
+        "_emitted_by": EMITTED_BY,
+    }
 
 
 # ---------------------------------------------------------------------------
-# J6 — GDPR forget via tombstone + crypto-shred (FENCED; depends on J5).
-# ADR-0080 body + ADR-0004 §"GDPR forget path".
+# J6 - GDPR forget via tombstone + crypto-shred. ADR-0080 D398/D399/D400 +
+# ADR-0004 §"GDPR forget path".
 # ---------------------------------------------------------------------------
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_DEFAULT_PEOPLE_SUBDIR = "10 People"
+
+
+def _mint_person_id(name: str) -> str:
+    """Re-mint the canonical person_id from a display name (ADR-0080 D399).
+
+    MUST stay byte-identical to ``multi_tenant._default_enroll``'s mint
+    (``"p_" + re.sub(r"[^a-z0-9]+","_", name.lower()).strip("_")``). Parity
+    is pinned by ``tests/test_security_j5_j6.py`` so the two cannot drift
+    (the recurring Pillar-H/I local-re-derivation failure mode)."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").lower()).strip("_")
+    return "p_" + (slug or "first_prospect")
+
+
+def _read_frontmatter(text: str) -> dict:
+    """Minimal YAML-frontmatter parse (``--- ... ---`` at the top of a note)."""
+    if not text.startswith("---"):
+        return {}
+    end = text.find("\n---", 3)
+    if end == -1:
+        return {}
+    try:
+        import yaml
+        fm = yaml.safe_load(text[3:end])
+        return fm if isinstance(fm, dict) else {}
+    except Exception:
+        return {}
+
+
+def _find_person_notes(
+    vault_dir: Path, person_id: str, people_subdir: str = _DEFAULT_PEOPLE_SUBDIR,
+) -> list:
+    """All vault Person notes whose identity resolves to ``person_id``
+    (ADR-0080 D399): an explicit frontmatter ``person_id:``, or a display
+    name (frontmatter ``name:`` or filename stem) that re-mints to it."""
+    people_dir = Path(vault_dir) / people_subdir
+    if not people_dir.is_dir():
+        return []
+    out = []
+    for note in sorted(people_dir.rglob("*.md")):
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = _read_frontmatter(text)
+        if str(fm.get("person_id") or "") == person_id:
+            out.append(note)
+            continue
+        name = str(fm.get("name") or note.stem)
+        if _mint_person_id(name) == person_id:
+            out.append(note)
+    return out
+
+
+@contextlib.contextmanager
+def _forget_lock(base_dir: Path, person_id: str):
+    """Cross-process forget lock (ADR-0080 D398; ADR-0004 §Compliance I2) -
+    serializes the shred + suppress + purge + emit transaction so the
+    suppression list and the ledger cannot diverge. Scoped to the operator's
+    suppressions dir (hermetic). Fail-open on a read-only FS: erasure is a
+    legal duty we do not block on a lock we cannot take."""
+    base_dir = Path(base_dir)
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(person_id.encode("utf-8")).hexdigest()[:16]
+        fd = os.open(str(base_dir / f".forget-{digest}.lock"),
+                     os.O_WRONLY | os.O_CREAT, 0o600)
+    except OSError:
+        yield
+        return
+    try:
+        fcntl.lockf(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 def forget_person(
     person_id: str,
     *,
@@ -528,27 +810,95 @@ def forget_person(
     tenant_id: Optional[str] = None,
     now: "Optional[datetime]" = None,
 ) -> dict[str, Any]:
-    """Run the GDPR ``forget --person`` transaction (J6; ADR-0076 D380 +
-    ADR-0004 §"GDPR forget path"). Holds a lock spanning all steps:
+    """Run the GDPR ``forget --person`` transaction (J6; ADR-0080 D398 +
+    ADR-0004 §"GDPR forget path"). Holds a forget lock spanning all steps:
 
-    1. **Crypto-shred** the person's DEK (``keystore.destroy_key``) so the
-       ciphertext PII in the append-only ledger is unrecoverable — the
-       ledger bytes are NEVER mutated (I2 sacrosanct; append-only
-       preserved under erasure per ADR-0076 invariant 2).
-    2. Atomic ``suppression.forget_append`` (Pillar A; already shipped) so
-       no future send can re-reach the person.
-    3. Purge the vault Person + Touch notes (derived/reconstructable —
-       safe to delete, unlike the ledger SoT).
-    4. Emit ``gdpr_forget`` with a ``person_ref`` HASH (never cleartext
+    1. Resolve the vault note(s) + extract the person's email / identity
+       keys BEFORE purge (so the suppression entry can be written).
+    2. **Crypto-shred** the person's DEK (``keystore.destroy_key``). The
+       append-only ledger bytes are NEVER mutated - erasure is by destroying
+       the key that decrypts the at-rest PII (I2 sacrosanct; ADR-0076
+       invariant 2). Shred-first so a crash after this step still leaves the
+       person un-decryptable (fail-safe toward erasure).
+    3. Atomic ``policy.suppression.forget_append`` so no future send can
+       re-reach the person.
+    4. Purge the derived vault Person note(s) (reconstructable - safe to
+       delete, unlike the ledger SoT).
+    5. Emit ``gdpr_forget`` with a ``person_ref`` HASH (never cleartext
        ``person_id``) + the purge audit trail.
 
-    Returns the audit dict. FENCED build (depends on J5; ADR-0080) — see
-    ``.planning/RALPH-BLOCKED.md``.
+    Returns the tombstone dict (carrying ``key_destroyed``).
     """
-    raise NotImplementedError(
-        "forget_person is a FENCED Pillar J build (J6, depends on J5; "
-        "ADR-0080) — see .planning/RALPH-BLOCKED.md; Week 1 ships the signature."
-    )
+    person_id = str(person_id)
+    vault_dir = Path(vault_dir)
+    suppressions_dir = Path(suppressions_dir)
+    now = now if now is not None else datetime.now(timezone.utc)
+
+    try:
+        from orchestrator.policy.suppression import forget_append
+    except ImportError:  # pragma: no cover - bare-module sys.path alias
+        from policy.suppression import forget_append
+
+    with _forget_lock(suppressions_dir, person_id):
+        # 1. Resolve note(s) + extract email/identity BEFORE purge.
+        notes = _find_person_notes(vault_dir, person_id)
+        email: Optional[str] = None
+        identity_key: Optional[str] = None
+        for note in notes:
+            text = note.read_text(encoding="utf-8")
+            fm = _read_frontmatter(text)
+            if email is None and isinstance(fm.get("email"), str):
+                email = fm["email"]
+            if identity_key is None and isinstance(fm.get("identity_key"), str):
+                identity_key = fm["identity_key"]
+            if email is None:
+                m = _EMAIL_RE.search(text)
+                if m:
+                    email = m.group(0)
+
+        # 2. Crypto-shred the person's DEK (ledger bytes untouched - I2).
+        try:
+            n_events_shredded = len(led.all_events_for_person(person_id))
+        except Exception:
+            n_events_shredded = 0
+        key_destroyed = bool(keystore.destroy_key(person_id))
+
+        # 3. Suppression append (atomic write-temp-then-rename). Always record
+        #    the forget so a rebuilt vault cannot re-enroll the person; file
+        #    presence is the proof even when no email/identity_key was found.
+        forget_append(suppressions_dir, email=email, identity_key=identity_key)
+        suppression_appended = True
+
+        # 4. Purge the derived vault Person note(s).
+        vault_purged = False
+        for note in notes:
+            try:
+                note.unlink()
+                vault_purged = True
+            except OSError:
+                pass
+
+        # 5. Emit the gdpr_forget tombstone (hashed person_ref - never
+        #    cleartext; same opaque-person-hash convention as ADR-0079 D385).
+        person_ref = "sha256:" + hashlib.sha256(
+            person_id.encode("utf-8")
+        ).hexdigest()[:16]
+        tombstone = build_gdpr_forget_payload(
+            person_ref=person_ref,
+            key_destroyed=key_destroyed,
+            n_events_shredded=n_events_shredded,
+            suppression_appended=suppression_appended,
+            vault_purged=vault_purged,
+            forgotten_at_ts=_iso_z(now),
+            audit={
+                "requested_by": "operator",
+                "tenant_id": tenant_id,
+                "n_notes_purged": len(notes),
+            },
+        )
+        tombstone["ts"] = _iso_z(now)  # deterministic ledger ts (ADR-0031)
+        led.append(tombstone)
+        return tombstone
 
 
 def build_gdpr_forget_payload(
@@ -561,18 +911,30 @@ def build_gdpr_forget_payload(
     forgotten_at_ts: str,
     audit: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the ``gdpr_forget`` tombstone payload (J6). ``person_ref`` is
-    a HASH of the forgotten ``person_id`` — NEVER the cleartext id (the
-    privacy invariant; the whole point is that the person is forgotten).
-    FENCED build (ADR-0080)."""
-    raise NotImplementedError(
-        "build_gdpr_forget_payload is a FENCED Pillar J build (J6; ADR-0080) "
-        "— see .planning/RALPH-BLOCKED.md."
-    )
+    """Build the ``gdpr_forget`` tombstone payload (J6; ADR-0080 D400).
+    ``person_ref`` MUST be a ``sha256:`` hash of the forgotten ``person_id``
+    - NEVER the cleartext id (the privacy invariant; the whole point is that
+    the person is forgotten). Refuse-loud if it is not a hash."""
+    if not str(person_ref).startswith("sha256:"):
+        raise ValueError(
+            "build_gdpr_forget_payload: person_ref must be a 'sha256:' hash, "
+            "never a cleartext person_id (the privacy invariant; ADR-0080 D400)."
+        )
+    return {
+        "type": "gdpr_forget",
+        "person_ref": person_ref,
+        "key_destroyed": bool(key_destroyed),
+        "n_events_shredded": int(n_events_shredded),
+        "suppression_appended": bool(suppression_appended),
+        "vault_purged": bool(vault_purged),
+        "forgotten_at_ts": forgotten_at_ts,
+        "audit": audit,
+        "_emitted_by": EMITTED_BY,
+    }
 
 
 # ---------------------------------------------------------------------------
-# J7 — CAN-SPAM footer + one-click unsubscribe header. Week 4 body (ADR-0079).
+# J7 - CAN-SPAM footer + one-click unsubscribe header. Week 4 body (ADR-0079).
 # ---------------------------------------------------------------------------
 def build_canspam_footer(
     *, physical_mailing_address: str, unsubscribe_url: str,
@@ -580,7 +942,7 @@ def build_canspam_footer(
     """Build the CAN-SPAM physical-address + unsubscribe body footer (J7;
     ADR-0076 D381 + ADR-0079). Stamped into every outbound email body via
     ``gmail_client.send_email``'s existing ``body_footer`` seam. Refuse-loud
-    (``ValueError``, ADR-0001 D2) on an empty address / URL — a missing
+    (``ValueError``, ADR-0001 D2) on an empty address / URL - a missing
     CAN-SPAM physical address is a legal liability (asymmetric-failure-cost).
     """
     if not (physical_mailing_address or "").strip():
@@ -631,22 +993,22 @@ def build_list_unsubscribe_headers(
 
 
 # ---------------------------------------------------------------------------
-# J8 — audit-log export for compliance reviews. Week 3 body (ADR-0078 D391).
+# J8 - audit-log export for compliance reviews. Week 3 body (ADR-0078 D391).
 # ---------------------------------------------------------------------------
 
 #: Closed-set of ledger event fields the redact-by-default export
 #: pseudonymizes (ADR-0078 D391; R031 closed-set). Default-ALLOW export with
 #: this over-broad redact set keeps audit richness while the
 #: asymmetric-failure-cost bias (hash anything that correlates to a Person)
-#: holds the privacy line per I8 + ADR-0070 D375 (a) — a missed field is a
+#: holds the privacy line per I8 + ADR-0070 D375 (a) - a missed field is a
 #: reviewable closed-set edit, not a silent leak. Covers:
 #:
-#: * **person-resolving identifiers** — ``person_id`` and ``intent_id`` (the
+#: * **person-resolving identifiers** - ``person_id`` and ``intent_id`` (the
 #:   intent id embeds the person_id as ``snd_<pid>`` per ledger.new_intent_id,
 #:   so a person_id-only redaction would leak the substring);
-#: * **contact handles** — email / linkedin / generic handle fields;
+#: * **contact handles** - email / linkedin / generic handle fields;
 #: * **per-channel external message + thread ids** (gmail / linkedin);
-#: * **operator-confidential free-text** (ADR-0038 D182 + I8) — subject /
+#: * **operator-confidential free-text** (ADR-0038 D182 + I8) - subject /
 #:   body / draft / reply text + the discovery ``signal`` blurb.
 #:
 #: Values are HASHED, not dropped (ADR-0078 Alt-2 rejected): stable
@@ -731,7 +1093,7 @@ def export_audit_log(
     ledger (J8; ADR-0076 D382 + ADR-0078 D391). READ-ONLY contract per
     ADR-0059 D325 (the funnel-CLI precedent): walk the (optionally
     ``since``/``until``-filtered) ledger, write the covered events to
-    ``out_path``, then append EXACTLY ONE ``audit_log_exported`` marker — the
+    ``out_path``, then append EXACTLY ONE ``audit_log_exported`` marker - the
     export never rewrites prior events (I2 append-only). ``n_events`` counts
     the covered (pre-marker) events. ``out_format`` is a member of
     :data:`AUDIT_LOG_EXPORT_FORMATS` (refuse-loud otherwise, ADR-0001 D2).
@@ -745,7 +1107,7 @@ def export_audit_log(
     since_ts = _iso_z(since) if since is not None else None
     until_ts = _iso_z(until) if until is not None else None
 
-    # READ-ONLY pass — collect the covered events BEFORE appending the marker
+    # READ-ONLY pass - collect the covered events BEFORE appending the marker
     # so the marker never counts itself (n_events = pre-marker covered count).
     covered = [
         e.to_dict() for e in led.all_events()
@@ -760,7 +1122,7 @@ def export_audit_log(
         with out_path.open("w", encoding="utf-8") as fh:
             for d in rows:
                 fh.write(json.dumps(d, ensure_ascii=False, sort_keys=True) + "\n")
-    else:  # "csv" — union of keys (stable sorted); list/dict cells JSON-encoded
+    else:  # "csv" - union of keys (stable sorted); list/dict cells JSON-encoded
         fields = sorted({k for d in rows for k in d})
         with out_path.open("w", encoding="utf-8", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
@@ -835,7 +1197,7 @@ def build_audit_log_exported_payload(
 
 
 # ---------------------------------------------------------------------------
-# R001 — identity-graph false-merge audit (assigned INTO Pillar J).
+# R001 - identity-graph false-merge audit (assigned INTO Pillar J).
 # Week 3 body (ADR-0078 D392). Reverse-merge `identity.py split` tooling = v2.
 # ---------------------------------------------------------------------------
 
@@ -853,7 +1215,7 @@ def _flatten_identity_keys(keys: Any) -> list[str]:
     """Flatten an :class:`orchestrator.identity.IdentityKeys` into the sorted
     ``"<class>:<value>"`` string form R001 audits (``li:`` / ``em:`` / ``gh:``
     / ``tw:``). ``alt_names`` + ``country`` are NOT identity match-classes
-    (``identity.keys_intersect`` — names are too unstable for dedup), so they
+    (``identity.keys_intersect`` - names are too unstable for dedup), so they
     are excluded from the audited key-set."""
     out: list[str] = []
     if getattr(keys, "linkedin", None):
@@ -874,7 +1236,7 @@ def detect_identity_keys_drift(
     the ledger view (latest ``identity_keys_modified.after_keys`` per
     ``person_id`` is the last audited state), then compare each vault Person
     note's current keys. Returns one drift record per audited Person whose
-    vault keys diverge — the manual-merge drift that has no audit trail today;
+    vault keys diverge - the manual-merge drift that has no audit trail today;
     reconcile consumes it. A Person with NO audit baseline is not flagged (it
     has nothing to diverge *from*). Returns ``[]`` when every audited Person
     matches. (``now`` is reserved for a future as-of window; the view spans the
@@ -925,7 +1287,7 @@ def build_identity_keys_modified_payload(
     ``actor`` is one of :data:`_IDENTITY_KEYS_ACTORS`
     (``operator`` / ``reconcile`` / ``enrollment``). The in-ledger audit row
     carries cleartext ``person_id`` exactly as every other ledger event does
-    (the ledger is the SoT) — the no-cleartext-PII invariant applies to EXPORTS
+    (the ledger is the SoT) - the no-cleartext-PII invariant applies to EXPORTS
     (J8 redacts) and the ``gdpr_forget`` tombstone (hashed ``person_ref``), NOT
     to in-ledger audit rows (ADR-0078 D392 + Alt-3 rejected). Refuse-loud
     (``ValueError``, ADR-0001 D2) on an empty ``person_id``, an ``actor``
@@ -966,25 +1328,25 @@ __all__ = [
     "CANSPAM_REQUIRED_HEADERS",
     "SecurityConfig",
     "CredentialKeystore",
-    # J1 — OAuth refresh-and-retry (Week 2)
+    # J1 - OAuth refresh-and-retry (Week 2)
     "send_with_token_rotation",
     "build_auth_token_refreshed_payload",
-    # J5 — encrypted-at-rest (FENCED)
+    # J5 - encrypted-at-rest (FENCED)
     "resolve_keystore",
     "derive_person_data_key",
     "encrypt_credential",
     "decrypt_credential",
     "build_credentials_reencrypted_payload",
-    # J6 — GDPR forget crypto-shred (FENCED)
+    # J6 - GDPR forget crypto-shred (FENCED)
     "forget_person",
     "build_gdpr_forget_payload",
-    # J7 — CAN-SPAM (Week 4)
+    # J7 - CAN-SPAM (Week 4)
     "build_canspam_footer",
     "build_list_unsubscribe_headers",
-    # J8 — audit-log export (Week 3)
+    # J8 - audit-log export (Week 3)
     "export_audit_log",
     "build_audit_log_exported_payload",
-    # R001 — identity audit (Week 3)
+    # R001 - identity audit (Week 3)
     "detect_identity_keys_drift",
     "build_identity_keys_modified_payload",
 ]

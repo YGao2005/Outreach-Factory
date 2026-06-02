@@ -13,5 +13,7 @@ opentelemetry-sdk>=1.38
 opentelemetry-exporter-prometheus>=0.59b0
 
 # .env loading for the unified secret loader (orchestrator/env_loader.py). Soft
-# dependency: the loader falls back to a built-in parser if it is absent.
-python-dotenv>=1.0
+# dependency: the loader falls back to a built-in parser if it is absent. Floor
+# raised to the patched version per CVE-2026-28684 (GHSA-mf9w-mj56-hr94), fixed
+# in python-dotenv 1.2.2 (mirrors orchestrator/requirements.txt).
+python-dotenv>=1.2.2

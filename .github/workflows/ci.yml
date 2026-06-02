@@ -26,7 +26,14 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: pip install -r orchestrator/requirements.txt
+        # Runtime deps + test deps (pytest/hypothesis live in requirements-dev.txt)
+        # + the send-skill's OpenTelemetry deps (the golden-path gate imports the
+        # send venv's instrumentation). Without the dev + send deps the gate exits
+        # RED with `No module named pytest` (the suite never actually runs in CI).
+        run: |
+          pip install -r orchestrator/requirements.txt
+          pip install -r requirements-dev.txt
+          pip install -r skills/send-outreach/requirements.txt
       - name: Golden-path gate (full cross-pillar regression)
         run: python3 tests/golden_path/gate.py --full
 

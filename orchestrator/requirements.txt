@@ -1,12 +1,18 @@
 numpy>=1.24
 sentence-transformers>=2.2
 pyyaml>=6.0
-dnspython>=2.0
+# Floor raised to the patched version: CVE-2023-29483 (GHSA-3rq5-2g8h-59hc),
+# a DNS-resolver DoS, is fixed in dnspython 2.6.1. The OSV floor-scan flags the
+# old >=2.0 minimum even though a fresh install resolves to the latest 2.x.
+dnspython>=2.6.1
 
 # .env loading for the unified secret loader (orchestrator/env_loader.py). The
 # loader degrades to a built-in minimal parser if this is absent, so it is a
-# soft dependency, but installing it gives full python-dotenv semantics.
-python-dotenv>=1.0
+# soft dependency, but installing it gives full python-dotenv semantics. Floor
+# raised to the patched version: CVE-2026-28684 (GHSA-mf9w-mj56-hr94), a
+# symlink-following arbitrary-file-overwrite in set_key/unset_key, is fixed in
+# python-dotenv 1.2.2.
+python-dotenv>=1.2.2
 
 # Pillar G Week 3 — OpenTelemetry SDK + Prometheus exporter (per ADR-0050
 # D273's framework decision + ADR-0052's Week 3 OTel SDK initialization).
@@ -24,4 +30,17 @@ opentelemetry-exporter-prometheus>=0.59b0
 # `<4` per Pillar H Week 4 follow-up P3-7 closure preserves operator
 # dependency-budget stability against silent breakage on a future
 # aiohttp 4.0 API change.
-aiohttp>=3.9,<4
+# Floor raised to the patched version: aiohttp <3.14 carries ~30 OSV advisories
+# (incl. GHSA-63hf-3vf5-4wqf at CVSS 9.1). 3.14.0 clears them all (the floor
+# Dependabot validated); a fresh install already resolved to the latest 3.x.
+aiohttp>=3.14.0,<4
+
+# Pillar J Week 5/6 (J5/J6; ADR-0080) - encrypted-at-rest credentials +
+# GDPR crypto-shred forget. AES-GCM credential encryption (`cryptography`) +
+# Argon2id passphrase-derived master key (`argon2-cffi`) for the headless /
+# Docker keystore backend. Both are imported lazily inside the J5 functions,
+# so the module still loads without them, but they are supported (not
+# optional) runtime deps. The `os_keyring` backend additionally needs
+# `keyring` (install separately; only the OS-native keystore path uses it).
+cryptography>=42
+argon2-cffi>=23

@@ -825,12 +825,8 @@ class TestGoldenPathL0SecurityCompliance:
         assert SECURITY_SCANNERS == {"gitleaks", "dependabot", "osv-scanner"}, \
             f"J2/J3 — SECURITY_SCANNERS drift: {SECURITY_SCANNERS}"
 
-    # ---- J6 (FENCED — human-gated; depends on J5): forget crypto-shred ----
-    @pytest.mark.xfail(strict=False, reason="J6 FENCED (ADR-0080; depends on J5) — see "
-                       ".planning/RALPH-BLOCKED.md. forget_person + build_gdpr_forget_payload "
-                       "NotImplementedError. Crypto-shred the per-person DEK (I2 intact) + "
-                       "suppression append + vault purge + gdpr_forget tombstone (person_ref "
-                       "HASH). DO NOT build in the loop — human-gated.")
+    # ---- J6: forget crypto-shred. GREEN since 2026-06-01 (ADR-0080 built +
+    # un-fenced under human authorship); permanent regression barrier.
     def test_pillar_J_forget_person_crypto_shred_leaves_audit(
         self, tmp_path, tmp_ledger, golden_now,
     ):
@@ -881,12 +877,8 @@ class TestGoldenPathL0SecurityCompliance:
         types = [e.to_dict()["type"] for e in tmp_ledger.all_events()]
         assert "gdpr_forget" in types, f"J6 — no gdpr_forget tombstone: {types}"
 
-    # ---- J5 (FENCED — human-gated): credentials encrypted at rest ---------
-    @pytest.mark.xfail(strict=False, reason="J5 FENCED (ADR-0080) — see "
-                       ".planning/RALPH-BLOCKED.md. resolve_keystore/encrypt_credential/"
-                       "decrypt_credential NotImplementedError. OS-keyring + Argon2id "
-                       "passphrase fallback; crypto-shred makes decrypt raise. DO NOT build "
-                       "in the loop — human-gated.")
+    # ---- J5: credentials encrypted at rest. GREEN since 2026-06-01
+    # (ADR-0080 built + un-fenced under human authorship); regression barrier.
     def test_pillar_J_credentials_encrypted_at_rest(self):
         import pytest as _pytest
 
