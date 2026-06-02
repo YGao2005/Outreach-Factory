@@ -10,7 +10,7 @@ PyYAML==6.0.2
 # import with ModuleNotFoundError: No module named 'opentelemetry'.
 opentelemetry-api>=1.38
 opentelemetry-sdk>=1.38
-opentelemetry-exporter-prometheus>=0.59b0
+opentelemetry-exporter-prometheus>=0.63b1
 
 # .env loading for the unified secret loader (orchestrator/env_loader.py). Soft
 # dependency: the loader falls back to a built-in parser if it is absent. Floor
