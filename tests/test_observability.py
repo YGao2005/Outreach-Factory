@@ -3845,7 +3845,23 @@ class TestDispatcherSpanWiring:
     succeeds, blocks, or fails. Per ADR-0055 D303 the wrapping
     boundary is the function entry; the span finishes when the
     function returns (block-return OR success-return OR exception).
+
+    Post-sever (.planning/PLAN-sever-and-partition.md W1): the core send path
+    routes ``traced_stage`` through the no-op ``obs`` shim by default, so the
+    dispatcher emits real spans only when OTel is opted in. The autouse fixture
+    below sets ``OUTREACH_FACTORY_OTEL=1`` so the shim delegates to
+    ``observability.traced_stage`` (whose ``get_tracer`` the ``in_memory_tracer``
+    fixture monkeypatches), exercising the real wiring.
     """
+
+    @pytest.fixture(autouse=True)
+    def _enable_otel_shim_delegation(self, monkeypatch):
+        _bootstrap_send_queued_import()
+        import obs as _obs
+        monkeypatch.setenv("OUTREACH_FACTORY_OTEL", "1")
+        _obs._backend_cache = None  # force a fresh resolve to the real backend
+        yield
+        _obs._backend_cache = None
 
     def test_gated_send_one_emits_send_email_span(
         self, in_memory_tracer, led, tmp_path,
@@ -5521,21 +5537,6 @@ class TestSLOEmitsAreNotUncatalogued:
         assert uncatalogued == []
 
 
-class TestWeek7DocstringDriftDiscipline:
-    """ADR-0056 D307-D313 — the module-level docstring drift
-    discipline (NOW ELEVEN consecutive weeks at Pillar G Week 7-8;
-    Pillar F W8-W12 + Pillar G W2-W6 + W7-W8) requires the
-    observability module's docstring names the Week 7-8 deliverables
-    + ADR-0056."""
-
-    def test_module_docstring_names_week_7_8(self):
-        """Week 7-8 + ADR-0056 are in the module docstring."""
-        doc = observability.__doc__ or ""
-        assert "Week 7-8" in doc
-        assert "ADR-0056" in doc
-        assert "slo_violation_detected" in doc
-
-
 # ---------------------------------------------------------------------------
 # Pillar G Week 9 — cost dashboard primitive + per-source cost_incurred
 # aggregation + `cost_source_uncatalogued` diagnostic kind + Grafana
@@ -6338,20 +6339,6 @@ class TestWeek9GrafanaCostDashboardYaml:
             "ADR-0057 D318 — Grafana cost dashboard YAML's panels "
             "must reference the cost metric via PromQL."
         )
-
-
-class TestWeek9DocstringDriftDiscipline:
-    """ADR-0057 — the module-level docstring drift discipline (NOW
-    TWELVE consecutive weeks at Pillar G Week 9; Pillar F W8-W12 +
-    Pillar G W2-W6 + W7-W8 + W9) requires the observability module's
-    docstring names the Week 9 deliverables + ADR-0057."""
-
-    def test_module_docstring_names_week_9(self):
-        """Week 9 + ADR-0057 are in the module docstring."""
-        doc = observability.__doc__ or ""
-        assert "Week 9" in doc
-        assert "ADR-0057" in doc
-        assert "collect_cost_snapshots" in doc
 
 
 class TestWeek9BehavioralPassthrough:

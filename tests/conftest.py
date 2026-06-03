@@ -49,7 +49,7 @@ for _name in ("identity", "state_machine",
               "discovery_dedup", "discovery_lineage",
               "email_verification_cache", "tier_assignment",
               "enrollment",
-              "backfill_identity", "ledger", "backfill_ledger",
+              "ledger",
               "reconcile", "policy", "reply_classifier",
               "reply_classifier_llm",
               "auto_unsubscribe", "conversation_state",
@@ -65,6 +65,61 @@ for _name in ("identity", "state_machine",
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "live: tests that hit the live network (DNS, HTTP)")
+    config.addinivalue_line(
+        "markers",
+        "operations: advanced-tier tests for modules off the core send path "
+        "(daemon, observability, reconcile, conversation/reply, discovery, "
+        "enrichment, the migration history, advanced channels). Run the fast "
+        "core-only regression with `gate.py --core` or `-m 'not operations'`.",
+    )
+
+
+# W5 (test re-tiering): the operations/advanced tier. These files test modules
+# that are off the core send path (the four jobs: onboarding, guardrails, state,
+# status). Marking them `operations` lets `gate.py --core` run the fast core
+# regression. The binding `gate.py --full` still runs EVERYTHING, so this
+# categorization can only affect the optional fast path, never correctness.
+_OPERATIONS_TEST_FILES = frozenset({
+    "test_daemon.py",
+    "test_observability.py",
+    "test_multi_channel_coherence.py",
+    "test_funnel.py",
+    "test_reply_classifier.py",
+    "test_reply_classifier_llm.py",
+    "test_reconcile.py",
+    "test_reconcile_li_invite.py",
+    "test_reconcile_li_dm.py",
+    "test_reconcile_tw_dm.py",
+    "test_reconcile_pass_h_i_j.py",
+    "test_conversation_state.py",
+    "test_conversation_outcomes.py",
+    "test_discovery_dedup.py",
+    "test_discovery_lineage.py",
+    "test_enrichment_costs.py",
+    "test_email_verification_cache.py",
+    "test_verify_email.py",
+    "test_tier_assignment.py",
+    "test_cal_com_webhook.py",
+    "test_cost_incurred_event.py",
+    "test_auto_unsubscribe.py",
+    "test_enrollment.py",
+    "test_send_gate_linkedin.py",
+    "test_send_gate_linkedin_dm.py",
+    "test_send_gate_twitter_dm.py",
+    "test_send_gate_calendar_booking.py",
+    "test_doctor_preflight_migrations.py",
+})
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark the operations/advanced tier (W5). Centralized here so no
+    per-file edits are needed; the migration-history tests match by prefix."""
+    import pytest
+
+    for item in items:
+        name = Path(str(item.fspath)).name
+        if name in _OPERATIONS_TEST_FILES or name.startswith("test_migrations_"):
+            item.add_marker(pytest.mark.operations)
 
 
 # ---------------------------------------------------------------------------

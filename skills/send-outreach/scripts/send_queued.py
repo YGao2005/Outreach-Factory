@@ -65,9 +65,13 @@ if _ORCHESTRATOR.exists() and str(_ORCHESTRATOR) not in sys.path:
 import identity                       # noqa: E402
 import ledger as _ledger              # noqa: E402
 import policy as _policy              # noqa: E402
-import reconcile as _reconcile_mod    # noqa: E402
 import security as _security          # noqa: E402  Pillar J J7 — CAN-SPAM footer + List-Unsubscribe (ADR-0079)
-from observability import (           # noqa: E402
+# reconcile is imported LAZILY inside _maybe_run_quick_reconcile (not at module
+# scope): the pre-send freshness gate is best-effort + opt-out, and reconcile
+# pulls the heavy operations tier (conversation state, reply classifier, OTel).
+# Keeping the import lazy is what lets the core send path stay import-lean (see
+# tests/test_import_graph_lean.py).
+from obs import (                      # noqa: E402  no-op span shim; real OTel is opt-in via OUTREACH_FACTORY_OTEL
     get_send_latency_histogram,
     traced_stage,
 )
@@ -2874,6 +2878,11 @@ def _maybe_run_quick_reconcile(led: _ledger.Ledger, gmail_client) -> None:
     individual sends still gate-check on their own.
     """
     try:
+        # Lazy import: keeps the core send path import-lean. reconcile pulls the
+        # heavy operations tier; an adopter without it (or running --skip-
+        # reconcile-gate) still sends, gated by the per-draft checks. An
+        # ImportError here is caught below and degrades to a stderr warning.
+        import reconcile as _reconcile_mod  # noqa: PLC0415
         if not _reconcile_mod.needs_quick_reconcile(led=led):
             return
         print("Reconcile freshness gate tripped — running --quick first...")

@@ -49,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="exit 0 iff matching test(s) GENUINELY pass (xfail flipped via --runxfail)")
     ap.add_argument("--status", action="store_true", help="print per-test outcome table")
     ap.add_argument("--full", action="store_true", help="also run the whole suite (cross-pillar regression)")
+    ap.add_argument("--core", action="store_true",
+                    help="also run the CORE suite only (-m 'not operations'): the four jobs "
+                         "(onboarding, guardrails, state, status) + the send path. Faster than --full.")
     ns = ap.parse_args(argv)
 
     gp = str(GOLDEN_DIR)
@@ -67,9 +70,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Default: regression check. xfails allowed (punch-list stays red on purpose).
     rc = _pytest(gp, "--tb=short", "-q")
-    if ns.full and rc == 0:
-        print("GATE: golden path green — running full suite for cross-pillar regression…")
-        rc = _pytest("-q", "--tb=short")
+    if (ns.full or ns.core) and rc == 0:
+        marker = ["-m", "not operations"] if (ns.core and not ns.full) else []
+        label = "core suite (-m 'not operations')" if marker else "full suite for cross-pillar regression"
+        print(f"GATE: golden path green — running {label}…")
+        rc = _pytest("-q", "--tb=short", *marker)
     print(f"GATE regression check: {'GREEN' if rc == 0 else 'RED'} (exit {rc})")
     return rc
 

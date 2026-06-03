@@ -36,7 +36,7 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-# /research-prospect — Deep dossier for personalized outreach + call prep
+# /research-prospect - Deep dossier for personalized outreach + call prep
 
 You are a research agent for outreach. Your job: take one person, run a comprehensive multi-source scrape in ~3-5 min, fail fast if there's no email channel, surface fresh signals prominently, and update the Obsidian vault with everything found. **You do not draft outreach.** Drafting is `/draft-outreach`.
 
@@ -44,7 +44,7 @@ This skill **fills the gap** between `/find-leads` (discovers candidates with th
 
 ---
 
-## ⚙️ Pre-flight — load user config
+## ⚙️ Pre-flight - load user config
 
 **Before doing anything else, read the user's config:**
 
@@ -71,10 +71,10 @@ This file contains the user's company, founder identity, vault paths, voice corp
 # Refresh existing Person file
 /research-prospect "{vault.people_dir}/{vault.active_subdir}/First Last.md"
 
-# Pre-call prep mode — also emits dated brief in {vault.conversations_dir}/
+# Pre-call prep mode - also emits dated brief in {vault.conversations_dir}/
 /research-prospect "First Last" --call-prep 2026-05-11
 
-# Quick mode — skip Twitter + GitHub + news (faster, less depth)
+# Quick mode - skip Twitter + GitHub + news (faster, less depth)
 /research-prospect "First Last" --quick
 ```
 
@@ -84,13 +84,13 @@ Always load these vault files before running, if configured:
 
 | File | Why |
 |---|---|
-| `{founder.about_path}` (optional) | Founder voice/signals — for fit-scoring the personalization hooks. Skip if empty. |
+| `{founder.about_path}` (optional) | Founder voice/signals - for fit-scoring the personalization hooks. Skip if empty. |
 
 Also check existing vault entities to avoid clobbering (use `mcp__obsidian__obsidian_simple_search`):
 - The person's name → existing Person file in `{vault.people_dir}/`?
 - The company's name → existing Company file in `{vault.companies_dir}/`?
 
-If a Person file already exists, **merge** new findings — do not overwrite. Preserve `created`, `first_touch`, prior `Relationship arc` entries, prior `Notes`.
+If a Person file already exists, **merge** new findings - do not overwrite. Preserve `created`, `first_touch`, prior `Relationship arc` entries, prior `Notes`.
 
 ---
 
@@ -109,7 +109,7 @@ The fail-fast gate at Phase 1 is the entire reason this skill exists in its curr
 
 ---
 
-## Phase 0 — Identity resolution
+## Phase 0 - Identity resolution
 
 From whatever input form (URL, name+company, file path), resolve to:
 
@@ -124,15 +124,15 @@ company:
   domain: "company.com"  # from existing company file OR resolved at Phase 1
 ```
 
-If `vault_path` exists for either, load it and capture pre-existing fields. Do not assume what's there is stale — but flag deltas at the end.
+If `vault_path` exists for either, load it and capture pre-existing fields. Do not assume what's there is stale - but flag deltas at the end.
 
 ---
 
-## Phase 1 — 🚨 EMAIL FAIL-FAST GATE
+## Phase 1 - 🚨 EMAIL FAIL-FAST GATE
 
 **Run this BEFORE the deep scrape.** If we can't reach this person by email AND the channel can't fall back gracefully to LinkedIn DM, surface it immediately so the user can decide whether to invest the rest of the time.
 
-### Step 1.1 — Resolve company domain
+### Step 1.1 - Resolve company domain
 
 If `company.vault_path` exists and has `website:` field → use it.
 
@@ -141,7 +141,7 @@ Otherwise:
 - If none resolves with HTTP 200, do a WebSearch for `"{Company Name}" site:linkedin.com/company OR site:ycombinator.com` to find the canonical URL
 - Save the domain as `company.domain`
 
-### Step 1.2 — Try common email patterns
+### Step 1.2 - Try common email patterns
 
 The factory ships `orchestrator/enrich_emails.py` with three verification tiers. Pick the right one based on what's in config:
 
@@ -161,18 +161,18 @@ ELSE (no script_path):
 The script writes the guess to the Person note's `email:` field and sets `email_status:` to one of:
 
 **Tier 2 (Reoon) outcomes:**
-- `safe` — Reoon score ≥90, deliverable, NOT catch-all → ship with confidence
-- `catch_all` — domain accepts everything; specific mailbox unverifiable → ship at modal-pattern risk, or escalate to manual lookup
+- `safe` - Reoon score ≥90, deliverable, NOT catch-all → ship with confidence
+- `catch_all` - domain accepts everything; specific mailbox unverifiable → ship at modal-pattern risk, or escalate to manual lookup
 - `invalid` / `disposable` / `spamtrap` → DO NOT SEND; documented in `email_skip_reason:`
 
 **Tier 1 (MX-only) outcomes:**
-- `domain_valid_unverified` — domain has MX records (or A-record fallback per RFC 5321 §5.1) → ship at modal-pattern risk (~5-10% bounce on valid domains)
-- `domain_invalid` — no MX, no A-record, or NXDOMAIN → DO NOT SEND; documented in `email_skip_reason:`
+- `domain_valid_unverified` - domain has MX records (or A-record fallback per RFC 5321 §5.1) → ship at modal-pattern risk (~5-10% bounce on valid domains)
+- `domain_invalid` - no MX, no A-record, or NXDOMAIN → DO NOT SEND; documented in `email_skip_reason:`
 
 If `{email_enrich.script_path}` is not configured at all, compute the patterns inline from `{email_enrich.patterns}`. Default ordering:
 
 ```
-{first}@{domain}              # default — ~70% hit rate at <50-person companies
+{first}@{domain}              # default - ~70% hit rate at <50-person companies
 {first}.{last}@{domain}
 {first}{last[0]}@{domain}
 {first[0]}{last}@{domain}
@@ -184,12 +184,12 @@ If `{email_enrich.script_path}` is not configured at all, compute the patterns i
 - ✅ Tier 2: Reoon returns `safe` → highest confidence, ship
 - ✅ Tier 1: MX check passes → `domain_valid_unverified` → ship at modal-pattern risk (~5-10% bounce on valid domains)
 - ⚠️ Tier 2: Reoon returns `catch_all` → domain accepts everything; modal pattern is best-effort, surface this risk to user before sending
-- ⚠️ Domain resolves but the company uses Gmail / personal addresses publicly visible — flag this
+- ⚠️ Domain resolves but the company uses Gmail / personal addresses publicly visible - flag this
 - ❌ Tier 2: Reoon returns `invalid` / `disposable` / `spamtrap`
 - ❌ Tier 1: MX-check returns `domain_invalid`
 - ❌ Company has no findable domain, OR is acquired/dead, OR uses generic info@ only
 
-### Step 1.3 — Gate decision
+### Step 1.3 - Gate decision
 
 ```
 IF email channel viable:
@@ -208,24 +208,24 @@ IF both fail (no email AND no LinkedIn):
     → abort. Surface: "No reachable channel found. Inputs may be wrong; please check spelling/URL."
 ```
 
-This gate typically takes ≤30s. If you find yourself spending >2 min here, the prospect's identity probably isn't resolved correctly — stop and ask the user.
+This gate typically takes ≤30s. If you find yourself spending >2 min here, the prospect's identity probably isn't resolved correctly - stop and ask the user.
 
 ---
 
-## Phase 2 — Parallel deep scrape
+## Phase 2 - Parallel deep scrape
 
 Fire all sources in parallel (use multi-tool-call within one message). Default sources for full mode:
 
-### Source tier A — always run (cheap + high-yield)
+### Source tier A - always run (cheap + high-yield)
 
 | # | Source | Tool | Notes |
 |---|---|---|---|
 | A1 | LinkedIn person profile | `mcp__linkedin__get_person_profile` | sections=`experience,education,posts,projects,skills,honors` and `max_scrolls: 15` |
-| A2 | LinkedIn company profile | `mcp__linkedin__get_company_profile` | sections=`posts,jobs`. WARNING: LinkedIn's automatic company-slug matching is unreliable — see Phase 2 quirks below |
+| A2 | LinkedIn company profile | `mcp__linkedin__get_company_profile` | sections=`posts,jobs`. WARNING: LinkedIn's automatic company-slug matching is unreliable - see Phase 2 quirks below |
 | A3 | Company website | `mcp__ScraplingServer__stealthy_fetch` | `network_idle: true`, `wait: 3000` for SPAs |
 | A4 | Personal blog/portfolio | `mcp__ScraplingServer__get` | Found via LinkedIn `external` links or company website footer |
 
-### Source tier B — run unless `--quick`
+### Source tier B - run unless `--quick`
 
 | # | Source | Tool | Notes |
 |---|---|---|---|
@@ -234,13 +234,13 @@ Fire all sources in parallel (use multi-tool-call within one message). Default s
 | B3 | YC company page | `mcp__ScraplingServer__get` | If `(YC X##)` or "YC" appears anywhere |
 | B4 | News mentions | `WebSearch` query: `"{Person Name}" OR "{Company}" {YYYY}` | Last 90 days only |
 
-### Source tier C — opportunistic (only if obvious from tier A)
+### Source tier C - opportunistic (only if obvious from tier A)
 
 | # | Source | Tool | Notes |
 |---|---|---|---|
 | C1 | Substack/podcast appearances | `WebSearch` | If person blogs OR is interviewed publicly |
 | C2 | Conference talks / YouTube | `WebSearch` site:youtube.com | If they list talks in LinkedIn experience |
-| C3 | Co-founder / key team profiles | `mcp__linkedin__get_person_profile` | One level deep — only direct co-founder |
+| C3 | Co-founder / key team profiles | `mcp__linkedin__get_person_profile` | One level deep - only direct co-founder |
 
 ### Phase 2 quirks (from real-world experience)
 
@@ -258,12 +258,12 @@ For real post content past the bio, X.com requires an authenticated session.
 
 **Cookie file location:** `{scraper_auth.twitter_cookies_path}` (default: `{factory.home}/skills/research-prospect/auth/x.com-cookies.json`)
 
-Expected format (Scrapling-compatible — array of cookie objects). See `auth/README.md` in the skill directory for setup instructions and the JSON format template.
+Expected format (Scrapling-compatible - array of cookie objects). See `auth/README.md` in the skill directory for setup instructions and the JSON format template.
 
 **Skill behavior:**
 - If file exists → load + pass to `stealthy_fetch` via `cookies` param
-- If file missing → fetch x.com without auth, accept bio-only result, log a one-line note "Twitter posts require cookies — see auth/README.md to set up"
-- If file present but page still shows logged-out marker ("Don't miss what's happening" / "This account doesn't exist") → cookies likely expired, surface "Twitter cookies appear expired — please refresh" and continue gracefully
+- If file missing → fetch x.com without auth, accept bio-only result, log a one-line note "Twitter posts require cookies - see auth/README.md to set up"
+- If file present but page still shows logged-out marker ("Don't miss what's happening" / "This account doesn't exist") → cookies likely expired, surface "Twitter cookies appear expired - please refresh" and continue gracefully
 
 **Detection of expired cookies:** look for the literal string `"Don't miss what's happening"` in the fetched markdown. If present, cookies are dead.
 
@@ -271,24 +271,24 @@ Expected format (Scrapling-compatible — array of cookie objects). See `auth/RE
 
 ---
 
-## Phase 3 — Recency tag + worldview synthesis
+## Phase 3 - Recency tag + worldview synthesis
 
 ### 3a. Recency tagging
 
-Every finding gets a `date` field (best-effort — from post timestamps, blog dates, GitHub commit times). Group findings into three buckets:
+Every finding gets a `date` field (best-effort - from post timestamps, blog dates, GitHub commit times). Group findings into three buckets:
 
-- 🚨 **Fresh** (≤7 days) — these go at the TOP of the dossier
+- 🚨 **Fresh** (≤7 days) - these go at the TOP of the dossier
 - 🔥 **Recent** (8-30 days)
 - 📚 **Background** (>30 days)
 
-If a person posts daily, "Fresh" can have a lot — that's fine. The point is the visual hierarchy.
+If a person posts daily, "Fresh" can have a lot - that's fine. The point is the visual hierarchy.
 
 ### 3b. Worldview synthesis (run if 3+ public datapoints exist)
 
 Look for repeated themes / values / contradictions across blog posts, tweets, talks, public quotes. Output a structured "Worldview" section with:
 
 ```markdown
-## Worldview ({N} confirmed datapoints — pattern is {strong|mixed|emerging})
+## Worldview ({N} confirmed datapoints - pattern is {strong|mixed|emerging})
 
 1. **{Datapoint title}** ({when}): {1-line summary + key verbatim quote ≤25 words}
 2. **{Datapoint title}** ({when}): ...
@@ -299,7 +299,7 @@ Look for repeated themes / values / contradictions across blog posts, tweets, ta
 **Ruled IN language:** {3-5 phrases that match their register}
 ```
 
-**Don't fabricate.** If you can't find 3 substantive datapoints, write "Worldview: insufficient public data — defer to default register" and move on.
+**Don't fabricate.** If you can't find 3 substantive datapoints, write "Worldview: insufficient public data - defer to default register" and move on.
 
 ### 3c. Wedge-relevant signals
 
@@ -315,9 +315,9 @@ This makes the dossier directly usable by `/draft-outreach`. If `{icp.failure_mo
 
 ---
 
-## Phase 4 — Write/update vault entities
+## Phase 4 - Write/update vault entities
 
-### Phase 4a — Pre-update dedup check (Pillar E Week 9-11, per ADR-0033 D152 + ADR-0036 D169)
+### Phase 4a - Pre-update dedup check (Pillar E Week 9-11, per ADR-0033 D152 + ADR-0036 D169)
 
 **Before** writing or updating the Person frontmatter, query the dedup primitive. This catches the case where research-prospect was invoked on a name that turns out to match an existing Person via a different identity key (e.g., the operator typed a slightly-different name, but the LinkedIn URL resolves to a Person already in the vault under a different display-name spelling).
 
@@ -333,18 +333,18 @@ python {config.factory.home}/orchestrator/discovery_dedup.py check \
 | `should_skip_enrichment` | Behavior |
 |---|---|
 | `false` | Proceed with Phase 4b (the standard frontmatter write/merge). |
-| `true` (status=duplicate) | The prospect is already in the vault under a different display name. Treat as an UPDATE on the matched Person (not a CREATE) — load the matched Person's file path from the dedup result + merge research findings into that file. The `--apply` flag has already emitted the `discovery_dedup_hit` event for Pillar G cost-attribution. |
-| `true` (status=conflict) | 2+ existing Persons match the LinkedIn key — refuse-loud + surface the operator-visible conflict report at `~/.outreach-factory/conflicts/` for manual resolution. Do NOT write the Person file. |
+| `true` (status=duplicate) | The prospect is already in the vault under a different display name. Treat as an UPDATE on the matched Person (not a CREATE) - load the matched Person's file path from the dedup result + merge research findings into that file. The `--apply` flag has already emitted the `discovery_dedup_hit` event for Pillar G cost-attribution. |
+| `true` (status=conflict) | 2+ existing Persons match the LinkedIn key - refuse-loud + surface the operator-visible conflict report at `~/.outreach-factory/conflicts/` for manual resolution. Do NOT write the Person file. |
 
 The `--source-list` value INHERITS from the existing Person's `identity_keys.discovery_lineage.source_list` if the prospect was previously discovered via another skill; falls back to the conventional `[[research-prospect-deep-dives]]` tag if no prior provenance exists (per ADR-0036 D169's research-prospect special-shape).
 
-> **Why research-prospect's dedup integration lands in Week 9-11** (vs the other three skills' Week 2-3 integration): research-prospect operates per-prospect rather than per-list — its dedup check is structurally different (single LinkedIn key, not a batched lead-list partial). The integration coincides naturally with the discovery_lineage stamping refactor per ADR-0033 D152's deferred trajectory.
+> **Why research-prospect's dedup integration lands in Week 9-11** (vs the other three skills' Week 2-3 integration): research-prospect operates per-prospect rather than per-list - its dedup check is structurally different (single LinkedIn key, not a batched lead-list partial). The integration coincides naturally with the discovery_lineage stamping refactor per ADR-0033 D152's deferred trajectory.
 
-### Phase 4b — Person file (always update or create)
+### Phase 4b - Person file (always update or create)
 
 Path: `{vault.people_dir}/{status subdir}/{Full Name}.md`. Default `status subdir` for new prospects: `{vault.queue_subdir}`. For prospects with prior `first_touch`: `{vault.active_subdir}`.
 
-**On first creation:** full frontmatter + body — pass through the `enrollment.py enroll` helper with the discovery_lineage flags so the canonical sub-block lands:
+**On first creation:** full frontmatter + body - pass through the `enrollment.py enroll` helper with the discovery_lineage flags so the canonical sub-block lands:
 
 ```bash
 python {config.factory.home}/orchestrator/enrollment.py enroll \
@@ -359,9 +359,9 @@ python {config.factory.home}/orchestrator/enrollment.py enroll \
   --json
 ```
 
-The `--raw-input-hash` is `sha256:` + sha256 hex of `<linkedin-url>|<scrape-source-urls-joined>` (the canonical per-prospect input — re-running research-prospect on the same prospect produces the same hash).
+The `--raw-input-hash` is `sha256:` + sha256 hex of `<linkedin-url>|<scrape-source-urls-joined>` (the canonical per-prospect input - re-running research-prospect on the same prospect produces the same hash).
 
-**On refresh:** merge — add new fields, append to `Notes`, preserve `created`/`first_touch`/`Relationship arc`/`identity_keys.discovery_lineage` (the discovery_lineage sub-block was stamped at first creation and MUST NOT be overwritten on refresh — provenance is set ONCE at enrollment time per ADR-0032 D142).
+**On refresh:** merge - add new fields, append to `Notes`, preserve `created`/`first_touch`/`Relationship arc`/`identity_keys.discovery_lineage` (the discovery_lineage sub-block was stamped at first creation and MUST NOT be overwritten on refresh - provenance is set ONCE at enrollment time per ADR-0032 D142).
 
 ```yaml
 ---
@@ -372,7 +372,7 @@ role: {Exact title from LinkedIn}
 linkedin: https://linkedin.com/in/{handle}
 email: {best-guess pattern OR empty}
 email_candidates: [first@dom, first.last@dom]  # if multiple plausible
-email_status: unverified  # one of: safe / catch_all / domain_valid_unverified / unverified — set by enrich_emails.py per the active tier
+email_status: unverified  # one of: safe / catch_all / domain_valid_unverified / unverified - set by enrich_emails.py per the active tier
 twitter: {if found}
 github: {if found}
 blog: {if found}
@@ -380,14 +380,14 @@ location: {city, country}
 school: {education}
 prior_companies:
   - {Company} ({years}, {role})
-created: {YYYY-MM-DD — preserve if file existed}
+created: {YYYY-MM-DD - preserve if file existed}
 first_touch: {preserve if file existed, else empty}
-last_research: {YYYY-MM-DD — set to today}
+last_research: {YYYY-MM-DD - set to today}
 next_action: {empty unless --call-prep}
 next_action_date: {empty unless --call-prep}
 tags:
   - {batch tag if YC: yc-wave-1, yc-w24, etc.}
-  - {tier-A if high-fit ICP — see {icp.tier_playbook_path} if configured}
+  - {tier-A if high-fit ICP - see {icp.tier_playbook_path} if configured}
   - {fresh-research}
 ---
 
@@ -397,13 +397,13 @@ tags:
 {1-2 sentence ICP fit + the single most distinctive hook}
 
 ## Background
-{Career arc as bullet list — Datadog (years, role, what they did)}
+{Career arc as bullet list - Datadog (years, role, what they did)}
 
 ## Personal / voice signals
 - **Self-described:** "{their own words from bio if any}"
 - **Languages:** ...
 - **Writes at:** {blog URL}
-- **Twitter:** @handle ({N posts, joined when}) — {active|sparse}
+- **Twitter:** @handle ({N posts, joined when}) - {active|sparse}
 
 ## Worldview ({N} datapoints)
 {From Phase 3b}
@@ -412,7 +412,7 @@ tags:
 {If discovered}
 
 ## Fresh signals (≤7 days)
-{From Phase 3a — empty if nothing recent}
+{From Phase 3a - empty if nothing recent}
 
 ## Recent signals (8-30 days)
 {From Phase 3a}
@@ -421,7 +421,7 @@ tags:
 {Preserve existing entries; append new touches when relevant}
 
 ## Notes
-{Bulleted observations — fit, vocabulary to mirror, things to avoid}
+{Bulleted observations - fit, vocabulary to mirror, things to avoid}
 ```
 
 ### Company file (update only if substantive new intel)
@@ -438,7 +438,7 @@ Don't churn the file just because you ran the skill.
 
 ### Dossier brief (only if `--call-prep` flag)
 
-Path: `{vault.conversations_dir}/{YYYY}/{MM}/{YYYY-MM-DD} {Name} {context} — PREP.md`
+Path: `{vault.conversations_dir}/{YYYY}/{MM}/{YYYY-MM-DD} {Name} {context} - PREP.md`
 
 Structure:
 - TL;DR (5 things)
@@ -449,7 +449,7 @@ Structure:
 - Strategic frame for the call
 - Question bank (Tier A/B/C/D)
 - What to NOT do
-- 1-paragraph "what is {company.name}" framing — derived from `{company.wedge_plain}` and `{company.one_liner}`
+- 1-paragraph "what is {company.name}" framing - derived from `{company.wedge_plain}` and `{company.one_liner}`
 - Differentiation answer if asked
 - Free-work hook ideas
 - Pre-call + post-call checklists
@@ -457,14 +457,14 @@ Structure:
 
 ---
 
-## Phase 5 — Terminal output to user
+## Phase 5 - Terminal output to user
 
 After save, print a compact summary:
 
 ```
-✅ /research-prospect complete — {Full Name} ({Company})
+✅ /research-prospect complete - {Full Name} ({Company})
 
-📧 Email gate: PASS — {first}@{domain} (unverified)
+📧 Email gate: PASS - {first}@{domain} (unverified)
                 fallback: {first}.{last}@{domain}, ...
 
 🚨 Fresh (≤7d):
@@ -479,9 +479,9 @@ After save, print a compact summary:
 📁 Vault:
    ✏️  Updated: {vault.people_dir}/{subdir}/{Full Name}.md
    ✏️  Updated: {vault.companies_dir}/{Company}.md
-   ✨  Created: {vault.conversations_dir}/{YYYY}/{MM}/{YYYY-MM-DD} {Name} call (15min) — PREP.md   (if --call-prep)
+   ✨  Created: {vault.conversations_dir}/{YYYY}/{MM}/{YYYY-MM-DD} {Name} call (15min) - PREP.md   (if --call-prep)
 
-⚠️  Twitter cookies expired (or never set) — only bio captured.   (if applicable)
+⚠️  Twitter cookies expired (or never set) - only bio captured.   (if applicable)
     Refresh: see auth/README.md in the research-prospect skill directory
 
 Next: /draft-outreach "{vault.people_dir}/{subdir}/{Full Name}.md"
@@ -497,9 +497,9 @@ Keep this terminal summary short. The vault holds the actual content; the termin
 **Refuse / abort with explanation if:**
 - Identity can't be resolved (name+company too generic, LinkedIn URL 404s)
 - Email gate fails AND person rejects LinkedIn-DM-only fallback
-- Phase 1 takes >2 min — something is wrong, ask user to clarify input
-- Less than 3 distinct public sources captured in Phase 2 — surface this honestly, don't pad the dossier
-- `~/.outreach-factory/config.yml` is missing — abort and tell user to create it
+- Phase 1 takes >2 min - something is wrong, ask user to clarify input
+- Less than 3 distinct public sources captured in Phase 2 - surface this honestly, don't pad the dossier
+- `~/.outreach-factory/config.yml` is missing - abort and tell user to create it
 
 **Quality signals (good run):**
 - ≥1 fresh signal (≤7 days) surfaced, OR honest "nothing fresh found"
@@ -524,7 +524,7 @@ Accept a path to a Lead List markdown file:
 /research-prospect "{vault.lead_lists_dir}/2026-05-09-foo-bar.md" --bulk
 ```
 
-Process each NEW + RE-ENGAGE row sequentially (NOT parallel — Scrapling sessions don't reuse cleanly across distinct prospects, and LinkedIn rate-limits aggressive parallelism on the same account).
+Process each NEW + RE-ENGAGE row sequentially (NOT parallel - Scrapling sessions don't reuse cleanly across distinct prospects, and LinkedIn rate-limits aggressive parallelism on the same account).
 
 For bulk:
 - Skip the AskUserQuestion gate on email failures; auto-tag `linkedin_dm_only` and continue
@@ -541,7 +541,7 @@ For bulk:
 - ❌ Don't auto-send emails or LinkedIn messages. Sending is always human.
 - ❌ Don't burn paid enrichment credits for email lookup (free-tier typically returns booleans, not strings; pattern-guess is the only free path)
 - ❌ Don't SMTP-validate emails. Don't ping mail servers.
-- ❌ Don't overwrite existing Person file fields without merging — preserve `created`, `first_touch`, prior touches.
+- ❌ Don't overwrite existing Person file fields without merging - preserve `created`, `first_touch`, prior touches.
 - ❌ Don't commit Twitter cookies. The `auth/` directory is gitignored for a reason.
 - ❌ Don't pad the dossier with generic content when sources are thin. Honest empty sections > fabricated ones.
 
@@ -549,9 +549,9 @@ For bulk:
 
 ## See also
 
-- `/find-leads` — upstream: discover candidates → produces Lead Lists this skill consumes
-- `/draft-outreach` — downstream: drafts a cold email/DM using the dossier this skill produced
-- `/humanizer` — sibling: clean AI tells from drafted text before send
-- `docs/ARCHITECTURE.md` (in outreach-factory repo) — factory pipeline + state machine
-- `docs/BILLING.md` (in outreach-factory repo) — subscription vs API billing matrix
-- `auth/README.md` (in this skill dir) — Twitter cookie setup
+- `/find-leads` - upstream: discover candidates → produces Lead Lists this skill consumes
+- `/draft-outreach` - downstream: drafts a cold email/DM using the dossier this skill produced
+- `/humanizer` - sibling: clean AI tells from drafted text before send
+- `docs/ARCHITECTURE.md` (in outreach-factory repo) - factory pipeline + state machine
+- `docs/BILLING.md` (in outreach-factory repo) - subscription vs API billing matrix
+- `auth/README.md` (in this skill dir) - Twitter cookie setup

@@ -1,156 +1,16 @@
-"""Pillar I Week 1 + Week 1 follow-up — multi-tenant + OSS hardening
-foundation (per ADR-0070 D371-D376 + the Pillar I Week 1 follow-up
-addendum closing THREE P3 narrative-drift findings per the per-week-
-reviewer pattern). Week 1 ships the **package shape** — frozen
-dataclasses, closed-sets, and primitive signatures raising
-:exc:`NotImplementedError`; Weeks 2-6 ship the bodies per ADR-0070 D376's
-per-week trajectory table.
+"""Multi-tenant support and the onboarding init wizard.
 
-**Pillar I Week 1 follow-up** per the per-week-reviewer's independent
-review of the W1 main commit `264f13d`: 0 P1 + 0 P2 + 3 P3 + 6 REFUTED
-addressed — the **FIRST Pillar I ADR-vs-actual-impl drift** caught by
-the per-week-reviewer's cross-pillar back-audit discipline extending
-the Pillar H TEN consecutive catches (per the W12 follow-up P3-1
-closure) to **ELEVEN consecutive weeks across the Pillar H + Pillar I
-trajectory**. P3-1 closure — "18 P3 concerns" narrative claim
-corrected to "15 P3 + 1 Deferred" (off-by-three narrative drift); P3-2
-closure — "NINE consecutive ADR-vs-actual-impl drift catches" stale
-count corrected to "TEN" per the W12 follow-up P3-1 closure; P3-3
-closure — discipline-counts narrative drift in HANDOFF lines 80-82
-standardized to post-W12-follow-up framing (THIRTY-EIGHT/THIRTY-FIVE/
-THIRTY-SEVEN at Pillar I Week 1 close; THIRTY-NINE/THIRTY-SIX/THIRTY-
-EIGHT at Pillar I Week 1 follow-up close). See
-``docs/adr/0070-pillar-i-foundation.md`` §"Pillar I Week 1 follow-up
-addendum" for the full closure narrative.
+Two things live here:
+  * The init wizard (run_init_wizard, build_init_wizard_completed_payload): the
+    OAuth, vault scaffold, and self-test-send flow that the `outreach-factory
+    init` CLI and the /onboard skill drive. This part is on the core onboarding
+    path.
+  * Multi-tenant primitives (advanced): TenantConfig, TenantRegistry, and the
+    per-tenant resolvers for ledger/policy dirs, Grafana folders, compose config,
+    and SLO-violation collection, for operators running more than one sender
+    identity from one install.
 
-Per the per-pillar-foundation precedent (Pillar D ADR-0025 + Pillar E
-ADR-0032 + Pillar F ADR-0038 + Pillar G ADR-0050 + Pillar H ADR-0060 —
-each pillar's Week 1 ships module shape + closed-sets + signatures +
-cross-pillar surface audit + exit-criterion vehicle scope + load-bearing
-invariants + per-week trajectory table). This module is the canonical
-target Weeks 2-6 satisfy.
-
-The public surface — see :data:`__all__`:
-
-* :class:`TenantConfig` — frozen dataclass naming per-tenant configuration
-  (``tenant_id`` + per-tenant vault / ledger / policy directories +
-  per-tenant OAuth token paths + per-tenant Grafana folder).
-* :class:`TenantRegistry` — frozen dataclass aggregating multiple
-  :class:`TenantConfig` instances (``tenants`` mapping ``tenant_id ->
-  TenantConfig``); the multi-tenant operator's set-once at process start.
-* :data:`TENANT_LIFECYCLE_STATES` — closed-set of the FOUR per-tenant
-  lifecycle states (``provisioning`` / ``active`` / ``paused`` /
-  ``deprovisioning``).
-* :data:`TENANT_NEW_EVENT_CLASSES` — closed-set of the SIX new Pillar I
-  event classes (``tenant_provisioned`` + ``tenant_paused`` +
-  ``tenant_resumed`` + ``tenant_deprovisioned`` + ``init_wizard_completed``
-  + ``auth_token_refreshed``).
-* :data:`TENANT_OAUTH_TOKEN_SCOPES` — closed-set of OAuth token scopes
-  Pillar I per-tenant operators provision (``gmail.send`` /
-  ``gmail.readonly`` / ``linkedin.invite`` / ``linkedin.dm`` /
-  ``twitter.dm`` / ``calendar.book``).
-* :func:`init_multi_tenant` — instantiate :class:`TenantRegistry` from a
-  list of :class:`TenantConfig` (Week 1 signature; **Week 2 body** per
-  ADR-0071).
-* :func:`resolve_per_tenant_ledger_dir` — resolve per-tenant ledger
-  directory from a base path + ``tenant_id`` per D375 invariant (a) —
-  per-tenant isolation (Week 1 signature; **Week 2 body** per ADR-0071).
-* :func:`resolve_per_tenant_policy_dir` — resolve per-tenant policy
-  directory from a base path + ``tenant_id`` (Week 1 signature; **Week 2
-  body** per ADR-0071).
-
-**Week 3** (ADR-0072 trajectory slot; see the ADR-0070 "Pillar I Week 3
-addendum") ships the OSS bring-up container surface + per-tenant
-observability isolation:
-
-* :func:`build_per_tenant_compose_config` — generate a docker-compose
-  manifest with one daemon service per tenant, each bind-mounting ONLY
-  its own host directories (container-surface per-tenant isolation).
-* :func:`resolve_per_tenant_grafana_folders` — resolve the per-tenant
-  Grafana folder UID map; refuse-loud on a folder-UID collision
-  (observability-surface per-tenant isolation).
-* :data:`DEFAULT_DAEMON_IMAGE` — the shared OCI image tag the per-tenant
-  daemon containers run (built once from ``infra/Dockerfile``).
-
-**Week 5** (ADR-0074 trajectory slot; see the ADR-0070 "Pillar I Week 5
-addendum") ships the CI bring-up surface + the per-tenant SLO surface:
-
-* :func:`collect_per_tenant_slo_violations` — run the Pillar G SLO violation
-  detector once per tenant against that tenant's OWN ledger; returns
-  ``{tenant_id: [SLOViolation, …]}`` with zero cross-tenant aggregation
-  (observability-surface extension of D375 invariant (a)) + the privacy
-  invariant preserved (``SLOViolation`` carries no per-Person field).
-* The CI surface itself lives in :mod:`orchestrator.ci` (the repo's first CI
-  artifact) + ``.github/workflows/ci.yml`` — the price-update == ADR-amendment
-  discipline check closing the Pillar A Week 6 §D3 deferral per ADR-0006.
-
-**Pillar I load-bearing invariants** per ADR-0070 D375 (five invariants,
-extending Pillar G Week 1 four invariants per ADR-0050 D276 + Pillar H
-Week 1 four invariants per ADR-0060 D335):
-
-1. **Per-tenant-isolation** — each tenant's daemon process is fully
-   isolated; no cross-tenant data leakage at any surface (ledger + vault
-   + Grafana + OAuth tokens). The :func:`resolve_per_tenant_ledger_dir`
-   + :func:`resolve_per_tenant_policy_dir` primitives produce per-tenant
-   directory paths; per-tenant Grafana folders isolate dashboards per
-   Pillar G Week 4 trajectory.
-2. **Per-tenant atomicity-preservation-across-process-boundary** —
-   extends Pillar H D335 invariant 2 per-tenant; one daemon process per
-   tenant (per ADR-0060 D335 invariant 1); per-tenant ledger directories
-   preserve the append-only contract per I2 per-tenant.
-3. **Init-wizard idempotence** — running the init wizard twice on the
-   same user produces a NO-OP (idempotent per the existing Pillar B
-   migration framework's precedent per ADR-0009 D9). The
-   ``init_wizard_completed`` event class signals first-run completion;
-   re-runs MAY emit but MUST NOT re-create OAuth tokens or vault
-   directories.
-4. **OSS-bring-up reproducibility** — ``git clone && docker compose up
-   && doctor.py`` on a fresh VM produces a byte-identical-deterministic
-   working system per ADR-0031 D140. The docker-compose container image
-   + the doctor preflight + the init wizard form the canonical OSS
-   bring-up surface; operators clone + compose up + doctor + send.
-5. **CI bring-up reliability** — the CI surface fails reliably on any
-   unaccompanied pricing-table change per ADR-0006 §"CI enforcement of
-   the price-update == ADR-amendment discipline" + the Pillar A §D3
-   deferred check landing at Pillar I Week 5 per the trajectory.
-
-Per-pillar framework dependencies (compounded across Pillar A-H):
-
-* **Pillar A** policy engine — per-tenant policy YAML files; the daemon's
-  pre-flight gate consults the per-tenant policy state.
-* **Pillar B** migration framework — per-tenant ledger directory schema
-  + per-tenant vault schema; the init wizard runs migrations at first
-  launch per ADR-0009 D9's idempotent auto-apply contract.
-* **Pillar C** per-channel two-phase commit — per-tenant per-channel
-  rate-limits; the per-channel intent/confirmed shape per ADR-0014 D33
-  preserves per-tenant.
-* **Pillar D** reconcile loop — per-tenant Pass A through O; each tenant's
-  reconcile runs against its own ledger directory.
-* **Pillar E** discovery dedup + cache + tier + lineage primitives —
-  per-tenant cache; per-tenant tier weights.
-* **Pillar F** voice corpus + Layer 5 backstop — per-tenant corpus
-  directories; per-tenant voice-fidelity thresholds.
-* **Pillar G** observability — per-tenant SLO surfaces + per-tenant
-  Grafana folder isolation; the per-event-class catalog extends with the
-  SIX Pillar I event classes per :data:`TENANT_NEW_EVENT_CLASSES`.
-* **Pillar H** daemon — one daemon process per tenant per ADR-0060 D335
-  invariant 1; per-tenant ``DaemonConfig.tenant_id`` field; per-tenant
-  EventClassIndex + PersonEventIndex; per-tenant crash-recovery synthesis.
-
-**Trajectory commitment — single-tenant-first-then-multi-tenant**
-per ADR-0050 D276(d) + ADR-0060 D335 invariant 1 + ADR-0070 D371:
-
-* **Single-tenant** is the framework default at Pillar I Week 1.
-  Operators running one daemon per machine (or per container) get the
-  full Pillar A-H feature set with ZERO operator-action-required at
-  Pillar I Week 1 upgrade (the Pillar I extensions are opt-in via the
-  :class:`TenantRegistry` set-once at process start).
-* **Multi-tenant fan-out** (Pillar I scope) wires one daemon process per
-  tenant. Per-tenant ledger directories isolate each tenant's event
-  stream. Per-tenant policy YAML files. Per-tenant Grafana folder
-  isolation. Per-tenant OAuth tokens.
-
-See ``docs/adr/0070-pillar-i-foundation.md`` for the full Week 1 ADR.
+Design history: ADR-0070.
 """
 
 from __future__ import annotations

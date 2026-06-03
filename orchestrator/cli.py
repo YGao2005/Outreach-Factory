@@ -10,6 +10,8 @@ The dedicated onboarding surface. Subcommands:
              ~/.outreach-factory/config.yml and runs the init wizard
              (Gmail OAuth -> vault setup -> first prospect -> a test send).
              Idempotent: re-running after success is a no-op.
+  status     What went out, who replied, what is queued, and whether it is
+             safe to send more today. A lean read over the ledger.
   doctor     Run the preflight checks (scripts/doctor.py).
   config     Copy the config + .env templates into ~/.outreach-factory/.
 
@@ -366,6 +368,226 @@ def cmd_init(args) -> int:
     return 0
 
 
+def _status_ledger_dir() -> Path:
+    """Where the ledger lives. Honors OUTREACH_FACTORY_LEDGER_DIR (the same
+    override the send path reads) so `status` reflects the ledger the sends
+    actually wrote to."""
+    env = os.environ.get("OUTREACH_FACTORY_LEDGER_DIR", "").strip()
+    if env:
+        return Path(os.path.expanduser(env)).resolve()
+    return DEFAULT_HOME / "ledger"
+
+
+def _load_status_config() -> dict | None:
+    """Parse the user config once for the status command. Returns the parsed
+    dict, or None when no config exists or it does not parse (status then runs
+    in its degraded, config-free mode)."""
+    cfg_path = _config_path()
+    if not cfg_path.exists():
+        return None
+    try:
+        import yaml
+
+        return yaml.safe_load(cfg_path.read_text()) or {}
+    except Exception:
+        return None
+
+
+def _status_daily_cap(cfg: dict | None) -> int | None:
+    """The optional daily email send cap (email_send.daily_send_cap in config).
+
+    Returns None when no config exists or the key is unset/invalid, in which
+    case status shows the raw send count without a headroom figure.
+    """
+    if not cfg:
+        return None
+    cap = (cfg.get("email_send") or {}).get("daily_send_cap")
+    try:
+        return int(cap) if cap is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _status_warming_decision(cfg: dict | None, events, now):
+    """Compute today's warming-ramp decision from config + the events already
+    loaded in cmd_status. Returns ``(decision, total_weeks)`` or None when
+    warming is unconfigured / disabled / un-cappable (status then skips the
+    line). Degrades gracefully: any parse error returns None rather than
+    raising, so a malformed warming block never breaks `status`.
+
+    Reads warming.start_date (the ramp anchor) + email_send.daily_send_cap
+    (the ceiling clamp). An explicit start_date is honored; otherwise the
+    warming module infers it from the earliest send_confirmed in ``events``.
+    """
+    if not cfg:
+        return None
+    warming_cfg = cfg.get("warming") or {}
+    if not isinstance(warming_cfg, dict):
+        return None
+    # Opt-in: only surface the line when warming is explicitly enabled.
+    if not warming_cfg.get("enabled"):
+        return None
+    cap = _status_daily_cap(cfg)
+    if cap is None:
+        return None
+
+    from datetime import datetime, timezone
+
+    from orchestrator import warming as _warming
+
+    start_raw = warming_cfg.get("start_date")
+    start_date = None
+    if start_raw:
+        try:
+            start_date = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00"))
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+        except (ValueError, AttributeError):
+            start_date = None
+
+    # Optional schedule override: weeks_to_full (int) or explicit fractions.
+    schedule = None
+    if warming_cfg.get("weeks_to_full") is not None:
+        try:
+            schedule = int(warming_cfg["weeks_to_full"])
+        except (TypeError, ValueError):
+            schedule = None
+    elif isinstance(warming_cfg.get("fractions"), (list, tuple)):
+        schedule = list(warming_cfg["fractions"])
+
+    try:
+        decision = _warming.compute_ramp(
+            now=now, start_date=start_date, daily_send_cap=cap,
+            events=events, schedule=schedule,
+        )
+        total = _warming.total_weeks(schedule, daily_send_cap=cap)
+    except Exception:
+        return None
+    return decision, total
+
+
+# Gate-refusal event types the send path emits (see orchestrator/ledger.py
+# "Event types" -> Health). Surfacing these is the point: the guardrails are
+# invisible until you can see them working.
+_STATUS_BLOCK_TYPES = ("dedup_blocked", "cooldown_blocked", "policy_blocked")
+
+
+def cmd_status(_args) -> int:
+    """Print what the operator actually wants to know: what went out, who
+    replied, what is queued, and whether it is safe to send more today.
+
+    A lean read over the append-only ledger (the source of truth). No daemon,
+    no Grafana, no OpenTelemetry. Degrades gracefully on a fresh install (empty
+    ledger) and when reply/bounce events are absent (an operator who does not
+    run reconcile simply sees zero replies, not an error).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from orchestrator import ledger as _ledger
+
+    ledger_dir = _status_ledger_dir()
+    led = _ledger.Ledger(ledger_dir)
+    events = led.all_events()
+
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    week_ago_iso = (now - timedelta(days=7)).isoformat()
+
+    sent_today: dict[str, int] = {}
+    sent_week: dict[str, int] = {}
+    replies_today = replies_week = 0
+    bounces_today = bounces_week = 0
+    blocks_today: dict[str, int] = {}
+    blocks_week = 0
+
+    for e in events:
+        ts = e.ts or ""
+        t = e.get("type")
+        in_today = ts[:10] == today
+        in_week = ts >= week_ago_iso
+        if t == "send_confirmed":
+            ch = e.get("channel") or "email"
+            if in_today:
+                sent_today[ch] = sent_today.get(ch, 0) + 1
+            if in_week:
+                sent_week[ch] = sent_week.get(ch, 0) + 1
+        elif t == "reply_received":
+            replies_today += 1 if in_today else 0
+            replies_week += 1 if in_week else 0
+        elif t == "bounce_detected":
+            bounces_today += 1 if in_today else 0
+            bounces_week += 1 if in_week else 0
+        elif t in _STATUS_BLOCK_TYPES:
+            if in_today:
+                reason = e.get("reason") or t
+                blocks_today[reason] = blocks_today.get(reason, 0) + 1
+            blocks_week += 1 if in_week else 0
+
+    funnel = _ledger.funnel(led, since=now - timedelta(days=30))
+    stages = funnel["persons_reached_stage"]
+
+    rule = "=" * 60
+    print(rule)
+    print(f"  OUTREACH FACTORY STATUS   {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"  ledger: {ledger_dir}")
+    print(rule)
+
+    if not events:
+        print("\n  No activity recorded yet. Once you send your first touch")
+        print("  (/send-outreach or `outreach-factory init`), it shows up here.\n")
+        return 0
+
+    cfg = _load_status_config()
+    emails_today = sent_today.get("email", 0)
+    cap = _status_daily_cap(cfg)
+    print(f"\n  TODAY  ({today})")
+    if cap is not None:
+        remaining = max(0, cap - emails_today)
+        flag = "  OVER CAP" if emails_today > cap else ""
+        print(f"    emails sent     {emails_today} / {cap}   ({remaining} remaining today){flag}")
+    else:
+        print(f"    emails sent     {emails_today}   (set email_send.daily_send_cap in config to track headroom)")
+    other_today = {c: n for c, n in sent_today.items() if c != "email"}
+    if other_today:
+        print(f"    other channels  " + ", ".join(f"{c}: {n}" for c, n in sorted(other_today.items())))
+    print(f"    replies in      {replies_today}")
+    print(f"    bounces         {bounces_today}")
+    if blocks_today:
+        total_blocked = sum(blocks_today.values())
+        detail = ", ".join(f"{r}: {n}" for r, n in sorted(blocks_today.items(), key=lambda kv: -kv[1]))
+        print(f"    blocked         {total_blocked}   ({detail})")
+    else:
+        print(f"    blocked         0")
+
+    # Warming-ramp ceiling for today (reuses the events already loaded). The
+    # framework owns the ramp + health gate; it surfaces the ceiling here so
+    # the operator can respect it. It does not yet hard-gate the send path.
+    warming_result = _status_warming_decision(cfg, events, now)
+    if warming_result is not None:
+        from orchestrator import warming as _warming
+
+        decision, total = warming_result
+        print(f"    {_warming.status_line(decision, total=total)}")
+    elif cfg is not None and (cfg.get("warming") or {}).get("enabled") is None:
+        # Config present but no warming block: a quiet nudge, not an error.
+        print("    warming ceiling ramp not configured (add a 'warming:' section to config)")
+
+    week_sent_total = sum(sent_week.values())
+    print(f"\n  LAST 7 DAYS")
+    by_ch = ", ".join(f"{c}: {n}" for c, n in sorted(sent_week.items())) or "none"
+    print(f"    sent            {week_sent_total}   ({by_ch})")
+    print(f"    replies         {replies_week}")
+    print(f"    bounces         {bounces_week}")
+    print(f"    blocked         {blocks_week}")
+
+    print(f"\n  PIPELINE  (last 30 days, from the ledger)")
+    for s in ("queued", "researched", "drafted", "ready", "sent"):
+        print(f"    {s:<12}{stages.get(s, 0)}")
+
+    print()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="outreach-factory",
@@ -384,6 +606,11 @@ def main(argv: list[str] | None = None) -> int:
         "demo",
         help="Zero-setup walkthrough on a fake prospect (no Gmail/API/model download).",
     ).set_defaults(func=cmd_demo)
+
+    sub.add_parser(
+        "status",
+        help="What went out, who replied, what is queued, and today's headroom.",
+    ).set_defaults(func=cmd_status)
 
     sub.add_parser("doctor", help="Run preflight checks (scripts/doctor.py).").set_defaults(
         func=cmd_doctor

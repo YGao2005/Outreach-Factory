@@ -4,7 +4,7 @@ version: 1.0.0
 description: |
   Orchestrate the outreach pipeline. Scans Person notes for the `pipeline_stage:`
   frontmatter field, picks prospects ready to advance, and spawns fresh-context
-  Agent-tool subagents in parallel — each one runs the appropriate stage skill
+  Agent-tool subagents in parallel - each one runs the appropriate stage skill
   (research → draft → send). Subscription-billed via the Claude Code session.
   Use when you want to advance the pipeline in batch.
   Stages: queued → researched → drafted → ready → sent.
@@ -19,7 +19,7 @@ allowed-tools:
   - Agent
 ---
 
-# /dispatch-outreach — Advance the pipeline in parallel
+# /dispatch-outreach - Advance the pipeline in parallel
 
 You orchestrate the outreach factory. Your job: find prospects with `pipeline_stage:` set in vault frontmatter, advance them through the state machine by spawning **fresh-context Agent-tool subagents** that run the appropriate stage skill, then write the new stage back to the Person note.
 
@@ -27,7 +27,7 @@ This is the headline factory loop. Everything else in the repo is a building blo
 
 ---
 
-## ⚙️ Pre-flight — load config
+## ⚙️ Pre-flight - load config
 
 **Before doing anything else, read the user's config:**
 
@@ -36,8 +36,8 @@ cat ~/.outreach-factory/config.yml
 ```
 
 The orchestrator Python helpers live at:
-- `{config.factory.home}/orchestrator/state_machine.py` — pipeline logic + vault scan
-- `{config.factory.home}/orchestrator/locks.py` — marker-file locking
+- `{config.factory.home}/orchestrator/state_machine.py` - pipeline logic + vault scan
+- `{config.factory.home}/orchestrator/locks.py` - marker-file locking
 
 **If `~/.outreach-factory/config.yml` does not exist**: abort and tell the user to copy `config-template/config.example.yml` from the outreach-factory repo to `~/.outreach-factory/config.yml`.
 
@@ -53,11 +53,11 @@ queued → researched → drafted → ready → sent
 |------------|------------|--------------------|------------|
 | queued     | researched | /research-prospect | ✅ yes |
 | researched | drafted    | /draft-outreach    | ✅ yes |
-| drafted    | ready      | (user review)      | ⏸ NO — manual gate |
+| drafted    | ready      | (user review)      | ⏸ NO - manual gate |
 | ready      | sent       | /send-outreach     | ✅ yes |
-| sent       | —          | terminal           | — |
+| sent       | -          | terminal           | - |
 
-Only automated transitions are eligible for dispatch. `drafted → ready` is a manual gate — the operator reviews the draft and flips `pipeline_stage:` to `ready` himself.
+Only automated transitions are eligible for dispatch. `drafted → ready` is a manual gate - the operator reviews the draft and flips `pipeline_stage:` to `ready` himself.
 
 `pipeline_stage:` is the orchestrator's field. It is **distinct from `status:`** (CRM lifecycle, owned by `/send-outreach` and manual edits). Do not touch `status:` from this skill.
 
@@ -77,15 +77,15 @@ Only automated transitions are eligible for dispatch. `drafted → ready` is a m
 
 ---
 
-## Phase 1 — Scan + status
+## Phase 1 - Scan + status
 
-**Auto-release stale locks first.** Always — at the start of every dispatch (before scanning, status, or planning):
+**Auto-release stale locks first.** Always - at the start of every dispatch (before scanning, status, or planning):
 
 ```bash
 python {config.factory.home}/orchestrator/locks.py clean-stale --max-age-min 30 --json
 ```
 
-The output is `{"cleaned": [<lock paths>], "count": N}`. If `count > 0`, log `Released N stale lock(s) (>30 min old).` to the user as the first line of output so they know cleanup happened. If `count == 0`, stay quiet — no need to mention.
+The output is `{"cleaned": [<lock paths>], "count": N}`. If `count > 0`, log `Released N stale lock(s) (>30 min old).` to the user as the first line of output so they know cleanup happened. If `count == 0`, stay quiet - no need to mention.
 
 Skip this auto-cleanup ONLY when the user invoked `--clean-locks` explicitly (then the utility-only path below handles it and exits).
 
@@ -109,7 +109,7 @@ If a prospect already has `pipeline_error:` set, surface it in the listing and a
 
 ---
 
-## Phase 2 — Plan + confirm
+## Phase 2 - Plan + confirm
 
 Show the user the dispatch plan in this shape:
 
@@ -132,7 +132,7 @@ If the user-implied cost exceeds half their window, warn explicitly.
 
 ---
 
-## Phase 3 — Acquire locks
+## Phase 3 - Acquire locks
 
 For each prospect chosen in Phase 2, acquire a lock:
 
@@ -146,7 +146,7 @@ The output is `{"ok": true/false, "agent_id": "...", "message": "..."}`. If `ok:
 
 ---
 
-## Phase 4 — Dispatch (parallel Agent-tool subagents)
+## Phase 4 - Dispatch (parallel Agent-tool subagents)
 
 For each prospect with a held lock, spawn ONE Agent-tool subagent. **Put every Agent call in a single message so they run concurrently.**
 
@@ -172,7 +172,7 @@ Rules:
 3. Do NOT spawn further subagents. Do the work yourself in this context.
 4. If you cannot proceed (missing data, blocked tool, ambiguous prospect),
    exit early. The FIRST line of your response MUST be exactly
-   `BLOCKED: <one-line reason>` — no other prefix is accepted, no leading
+   `BLOCKED: <one-line reason>` - no other prefix is accepted, no leading
    prose, no markdown. The dispatcher parses this strictly to record
    `pipeline_error:` on the note.
 5. On success, return a short (≤200 word) summary of what you did. Be terse.
@@ -184,7 +184,7 @@ Wait for all subagents to return.
 
 ---
 
-## Phase 5 — Write back state + release locks
+## Phase 5 - Write back state + release locks
 
 For each subagent result, before any `Edit`:
 
@@ -201,8 +201,8 @@ python {config.factory.home}/orchestrator/state_machine.py find-person-note \
 ```
 
 Output is `{"ok": true/false, "name": "...", "path": "/abs/path or null"}`. Use
-the returned `path` for the `Edit` below — NOT the cached one. If `ok: false`,
-log a warning (`could not re-locate Person note for <name> — leaving stage
+the returned `path` for the `Edit` below - NOT the cached one. If `ok: false`,
+log a warning (`could not re-locate Person note for <name> - leaving stage
 unchanged`) and skip the writeback for this prospect (still release the lock
 in 5d). The note may have been deleted or renamed beyond recovery; surfacing
 the miss is better than guessing.
@@ -217,18 +217,18 @@ prompt template:
   ≤200 chars).
 - **SUCCESS**: anything else (the subagent returned a normal summary).
 
-Strict prefix matching is intentional — a loose match risks false-classifying
+Strict prefix matching is intentional - a loose match risks false-classifying
 a real failure as success and silently advancing `pipeline_stage`. If a
 subagent ad-libbed an error report without the prefix, treat it as SUCCESS
 and let the next dispatch cycle re-detect via the downstream skill failing
-again. (Yes, this is a defensible silent failure — better than silently
+again. (Yes, this is a defensible silent failure - better than silently
 ADVANCING a broken prospect.)
 
 ### 5c. Edit the Person note frontmatter
 
 **Read the freshly re-located note FIRST** (`Read` tool on the path returned
 in 5a), then construct the Edit payloads from that fresh read. Do NOT cache
-an earlier read of the same path — a stage skill may have rewritten it
+an earlier read of the same path - a stage skill may have rewritten it
 mid-flight. The `Edit` tool requires exact-match `old_string`, so reading
 the current contents is mandatory.
 
@@ -242,7 +242,7 @@ Use the `Edit` tool against the path returned in 5a.
   Edit the old timestamp value to the new one.
 - If `pipeline_error:` and `pipeline_error_at:` were present from a prior
   failed run, remove BOTH lines via Edit. If they're absent, this step is a
-  no-op — do nothing. Do not Edit with an empty `old_string`.
+  no-op - do nothing. Do not Edit with an empty `old_string`.
 
 **On BLOCKED**: leave `pipeline_stage:` unchanged. Two cases:
 
@@ -271,7 +271,7 @@ Always release the lock, even on failure or when 5a couldn't re-locate the note.
 
 ---
 
-## Phase 6 — Summary
+## Phase 6 - Summary
 
 Report to the user:
 
@@ -325,7 +325,7 @@ When `pipeline_stage: sent`, the note is terminal for this round. Reply handling
 
 ---
 
-## Subscription billing — non-negotiable
+## Subscription billing - non-negotiable
 
 This skill uses the **Agent tool only** for spawning subagents. Agent-tool subagents inherit the Claude Code session's subscription billing.
 
@@ -333,7 +333,7 @@ This skill uses the **Agent tool only** for spawning subagents. Agent-tool subag
 ❌ Do NOT call the Anthropic SDK or API directly.
 ❌ Do NOT import `anthropic` from any new helper.
 
-If a user asks for unattended overnight runs, that is a future `dispatcher.py` Python entry-point — a separate file with its own subprocess discipline (must unset `ANTHROPIC_API_KEY` per `docs/BILLING.md`). Don't build it from inside this skill body.
+If a user asks for unattended overnight runs, that is a future `dispatcher.py` Python entry-point - a separate file with its own subprocess discipline (must unset `ANTHROPIC_API_KEY` per `docs/BILLING.md`). Don't build it from inside this skill body.
 
 ---
 

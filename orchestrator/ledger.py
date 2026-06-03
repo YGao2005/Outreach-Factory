@@ -4,28 +4,6 @@ Every Person enrollment, pipeline transition, and external action
 (Gmail send, LinkedIn invite) is recorded here as a single JSON line.
 Vault frontmatter becomes a denormalized view; the ledger is authoritative.
 
-Pillar H Week 9 + Pillar H Week 9 follow-up (P2-3 closure adds
-:meth:`Ledger.append_observer` refuse-loud at boundary on non-
-callable observer per the per-pillar-H raw-primitive refuse-loud-
-at-boundary discipline established by the W2 follow-up P2-2 closure
-for ``build_*_payload`` factories — operators registering a non-
-callable observer get a clear :exc:`TypeError` at registration time
-NOT at first append) — :meth:`Ledger.append` extended with a
-post-append observer seam per ADR-0067 D362 (the W9 extension to ADR-0067 per
-ADR-0060 D336's per-event-class index invalidation trajectory). The
-daemon registers an observer via :meth:`Ledger.append_observer` at
-:func:`orchestrator.daemon.init_daemon` Step 8.5 (NEW between Step 8
-materialization + the Step 9 DaemonRunner construction);
-the observer mutates the daemon's :class:`EventClassIndex` +
-:class:`PersonEventIndex` in-place so the per-Person primitives see
-the post-append state without re-walking the ledger. Observer firing
-happens AFTER the durable fsync + symlink update + mtime-cache
-invalidation, so a daemon crash between fsync + observer fire leaves
-the ledger consistent + the index re-materializable from the ledger
-per I3 at next daemon startup. Observer exceptions are logged to
-stderr but do NOT propagate (preserves the Ledger.append atomicity
-contract per Phase 5.5 + ADR-0060 D335 invariant 2).
-
 Why append-only:
   - Concurrent writers (dispatcher + manual /send-outreach + reconcile)
     all serialize cleanly via O_APPEND + fcntl advisory lock. No "last

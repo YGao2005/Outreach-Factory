@@ -3,7 +3,7 @@ name: competitor-customers
 version: 2.0.0
 description: |
   Mine competitor LinkedIn posts for their named customers + decision-makers, then
-  rank as outreach prospects. Customer-mining inverts the keyword-search pattern —
+  rank as outreach prospects. Customer-mining inverts the keyword-search pattern -
   every competitor names its customers in announcement posts, and those customers
   are proven production agent operators (high-precision buyers). Pairs with
   /find-leads as a complementary discovery channel. Source: `competitor-customers`.
@@ -23,13 +23,13 @@ allowed-tools:
   - WebFetch
 ---
 
-# /competitor-customers — Mine competitor LinkedIn posts for named customers
+# /competitor-customers - Mine competitor LinkedIn posts for named customers
 
 You are a customer-mining agent. Your job: load the curated competitor list, fetch each competitor's recent LinkedIn posts, extract the customer companies they publicly name, dedupe against the existing CRM, identify buyer-shape contacts at each NEW customer, and save a ranked Lead List in the user's Obsidian vault.
 
 ---
 
-## ⚙️ Pre-flight — load user config
+## ⚙️ Pre-flight - load user config
 
 **Before doing anything else, read the user's config:**
 
@@ -60,7 +60,7 @@ This file contains the user's company, ICP, vault paths, and discovery source li
 /competitor-customers --no-enroll              # explicit opt-out (same as default today)
 ```
 
-**`--enroll` (opt-in for now):** when set, every NEW row also gets a Person note stub created in `{vault.queue_subdir}/` with `pipeline_stage: queued` so `/dispatch-outreach` will pick it up. See Phase 4.5 below. Default is OFF for one release while the auto-enrollment path is being shaken out — once trusted, flip the default to ON in this skill body.
+**`--enroll` (opt-in for now):** when set, every NEW row also gets a Person note stub created in `{vault.queue_subdir}/` with `pipeline_stage: queued` so `/dispatch-outreach` will pick it up. See Phase 4.5 below. Default is OFF for one release while the auto-enrollment path is being shaken out - once trusted, flip the default to ON in this skill body.
 
 ---
 
@@ -71,7 +71,7 @@ Phase 0: Load CRM state + competitor list
 Phase 1: Mine posts (one get_company_posts per competitor)
 Phase 2: Extract candidates + dedupe
 Phase 3: ICP filter + buyer-shape search
-  └─ 3e: Pre-enrichment dedup check (Pillar E — ADR-0033 D152)
+  └─ 3e: Pre-enrichment dedup check (Pillar E - ADR-0033 D152)
 Phase 4: Save Lead List
 ```
 
@@ -107,7 +107,7 @@ For each competitor slug, call `mcp__linkedin__get_company_posts(company_name=<s
 
 Expected runtime: 5-15s per competitor (browser session). For 13 competitors = ~2-3 minutes total. Run them sequentially (the LinkedIn MCP shares one session under the hood; no benefit from parallelism here).
 
-**Cache the raw output** in conversational context for Phase 2 extraction. Don't write to disk — it's transient.
+**Cache the raw output** in conversational context for Phase 2 extraction. Don't write to disk - it's transient.
 
 If a competitor returns `This LinkedIn Page isn't available`, log and skip. Try one alternate slug only; after that, move on.
 
@@ -125,14 +125,14 @@ Capture: `{company_slug, display_name, found_in_competitor: <slug>}`.
 
 ### 2b. Unstructured (from post text)
 
-Most customer names are NOT tagged — they appear as plain text in announcement posts. Parse for these patterns:
+Most customer names are NOT tagged - they appear as plain text in announcement posts. Parse for these patterns:
 
 | Pattern | Example |
 |---|---|
 | Welcome/onboarding | `"Welcome SimplePractice to the Decagon customer family"` |
 | Now-using | `"GlossGenius as a Decagon customer"` / `"now working with Wealthsimple and Open Farm Pet"` |
 | Partnership | `"We're proud to partner with Block"` |
-| Customer testimonial quote | `"...— Brian Choi, CEO at Avis Budget Group"` |
+| Customer testimonial quote | `"...- Brian Choi, CEO at Avis Budget Group"` |
 | Featured-customer list | `"Used by Hertz and 8 featured customers"` (note count for follow-up) |
 | Customer-event mention | `"customers Chime, ClassPass, Mercado Libre, Spring Health, and Wonder"` |
 | Logo callouts | `"Leading companies like Afterpay, Contiki, ŌURA, Fusion Markets"` |
@@ -166,20 +166,20 @@ For each extracted candidate company name, run normalization (lowercase, strip `
 | In a closed-subdir with `status: dormant` AND `next_action_date ≤ today` | RE-ENGAGE | "dormant past-due" |
 | In Lead List `companies:` / `companies_parked:` | SKIP | "in {list}" |
 | In competitor list | SKIP | "is a competitor (don't pitch them)" |
-| No match | NEW (continue to Phase 3) | — |
+| No match | NEW (continue to Phase 3) | - |
 
 ---
 
 ## Phase 3: ICP filter + buyer-shape search
 
-For each NEW candidate company, do this in order — cheap to expensive:
+For each NEW candidate company, do this in order - cheap to expensive:
 
 ### 3a. Sanity check the company
 
 Call `mcp__linkedin__get_company_profile(company_name=<slug>)` to confirm:
 - Company exists at that slug
 - Industry / employee count / location are visible
-- Capture the URN from `references[].kind=="company_urn"` — needed for Phase 3c
+- Capture the URN from `references[].kind=="company_urn"` - needed for Phase 3c
 
 If the company doesn't resolve, try `search_companies(keywords=<display_name>)` once. If still nothing, drop with reason `linkedin-unresolvable`.
 
@@ -196,7 +196,7 @@ Defer to the user's ICP rules (`{icp.tier_playbook_path}` if configured, else `{
 
 Tag each candidate with `icp_pass: yes|no`. Drop `no` from the NEW list, but record in `companies_parked` with the reject reason.
 
-**Annotate vertical fit explicitly:** the wedge in `{company.wedge_plain}` defines who's a buyer. For example, "production AI agents (tool-calling, multi-step flows) at companies that operate them" means a SaaS company that USES an agent-platform vendor (e.g., uses Decagon for CX) IS a production agent operator and IS in-ICP. A consultancy that ships agents for clients is murkier — note that.
+**Annotate vertical fit explicitly:** the wedge in `{company.wedge_plain}` defines who's a buyer. For example, "production AI agents (tool-calling, multi-step flows) at companies that operate them" means a SaaS company that USES an agent-platform vendor (e.g., uses Decagon for CX) IS a production agent operator and IS in-ICP. A consultancy that ships agents for clients is murkier - note that.
 
 ### 3c. Buyer-shape search
 
@@ -210,13 +210,13 @@ mcp__linkedin__search_people(
 ```
 
 Pick the best buyer-shape match. Prefer in this order:
-1. **CTO / Co-founder & CTO** — highest authority on agent-platform decisions
-2. **Head of AI / Head of ML / VP AI** — operational owner
-3. **VP Engineering / Head of Engineering** — overall tech ownership
-4. **Founding engineer with agent ownership** (if visible from headline) — operator-shape
-5. **Director of AI / AI Platform Lead** — middle but actionable
+1. **CTO / Co-founder & CTO** - highest authority on agent-platform decisions
+2. **Head of AI / Head of ML / VP AI** - operational owner
+3. **VP Engineering / Head of Engineering** - overall tech ownership
+4. **Founding engineer with agent ownership** (if visible from headline) - operator-shape
+5. **Director of AI / AI Platform Lead** - middle but actionable
 
-If a customer-testimonial quote in Phase 2b already named a person (e.g., `"Rob Sanderson, Senior Director of Customer Intelligence at SimplePractice"`), use that person FIRST — they're publicly engaged with this category and quote-able in the cold-touch.
+If a customer-testimonial quote in Phase 2b already named a person (e.g., `"Rob Sanderson, Senior Director of Customer Intelligence at SimplePractice"`), use that person FIRST - they're publicly engaged with this category and quote-able in the cold-touch.
 
 Record: `linkedin_username`, `full_name`, `title`, `linkedin_url`.
 
@@ -232,7 +232,7 @@ Default `tier-S` per `{icp.tier_playbook_path}`. Downgrade to A only if buyer-sh
 
 ### 3e. Pre-enrichment dedup check (Pillar E)
 
-> **Added Pillar E Week 3 (ADR-0033 D152 amendment).** Before any future Apollo / PDL / Reoon enrichment lands in this skill, consult the dedup primitive so a named customer already in the vault doesn't burn a Reoon credit on re-verification. Today `competitor-customers` doesn't call Apollo/PDL/Reoon directly (LinkedIn MCP only), so the practical Week 3 effect is the operator-visible `discovery_dedup_hit` ledger event for Pillar G's per-source cost-attribution dashboard — but the integration is in place so when paid enrichment APIs land here, the cost-avoidance behavior is wired by default. Mirrors `find-leads` Phase 3e exactly; the canonical caller pattern is ADR-0033 D152's code block.
+> **Added Pillar E Week 3 (ADR-0033 D152 amendment).** Before any future Apollo / PDL / Reoon enrichment lands in this skill, consult the dedup primitive so a named customer already in the vault doesn't burn a Reoon credit on re-verification. Today `competitor-customers` doesn't call Apollo/PDL/Reoon directly (LinkedIn MCP only), so the practical Week 3 effect is the operator-visible `discovery_dedup_hit` ledger event for Pillar G's per-source cost-attribution dashboard - but the integration is in place so when paid enrichment APIs land here, the cost-avoidance behavior is wired by default. Mirrors `find-leads` Phase 3e exactly; the canonical caller pattern is ADR-0033 D152's code block.
 
 For each NEW candidate row (from Phase 2c's NEW bucket), after Phase 3a sanity-check + Phase 3b ICP-pass + Phase 3c buyer-shape resolved + Phase 3d score + tier assigned:
 
@@ -253,11 +253,11 @@ The CLI returns JSON with `status` ∈ `{not_duplicate, duplicate, conflict}` + 
 | `duplicate` | `true` | The named customer is already in the vault. Re-bucket the row to SKIP with reason `"dedup-hit: matched <person_id> on <matched_classes>"`. The `--apply` flag has already emitted the `discovery_dedup_hit` event. Do NOT call enrollment (avoids a redundant `enrollment_skipped_exists` event); surface the dedup-hit row in the SKIP table. |
 | `conflict` | `true` | 2+ existing Persons match the candidate's keys OR an ambiguous-shared-email scenario. The CLI's JSON output names the `report_path` (YAML conflict report at `~/.outreach-factory/conflicts/<ts>-<random>.yml`). Re-bucket the row to SKIP with reason `"dedup-conflict: see <report_path>"`. The `--apply` flag has emitted the `discovery_dedup_conflict` event. Aggregate the conflict count + surface at run end. |
 
-> **Why `--apply`:** the dry-run default (no `--apply`) reports the dedup outcome but does NOT append the event to the ledger. Pillar G's per-source cost-attribution dashboard depends on the ledger event landing — operators running `/competitor-customers` interactively (the production cadence) pass `--apply` so the dashboard sees every dedup hit. Test injection / CI / a future `--dry-run` skill flag MAY omit `--apply`; that's the escape valve.
+> **Why `--apply`:** the dry-run default (no `--apply`) reports the dedup outcome but does NOT append the event to the ledger. Pillar G's per-source cost-attribution dashboard depends on the ledger event landing - operators running `/competitor-customers` interactively (the production cadence) pass `--apply` so the dashboard sees every dedup hit. Test injection / CI / a future `--dry-run` skill flag MAY omit `--apply`; that's the escape valve.
 
 > **Per ADR-0032 D148 the privacy invariant:** the `--source-list` value is OPERATOR-PRIVATE. The CLI stamps it on the emitted event for direct ledger query but Pillar G dashboards NEVER aggregate by `source_list` (only by `source_skill`). The Layer 1 defense is the test corpus pin (`test_source_list_is_operator_private`) which fails loud if a future Pillar G contributor adds `--breakdown source_list` to the funnel CLI.
 
-This phase is content-additive — the existing Phase 2c state-aware dedup (against the in-memory cohort + lead-list + competitor index) still runs first; the dedup primitive's Phase 3e check is the SECOND layer (against the canonical `identity_keys:` block on Person notes — catches dedup hits that Phase 2c's name-only index misses because of normalization mismatches or LinkedIn-slug-only matches where the display name diverges, which is common when competitors paraphrase customer names in announcement posts).
+This phase is content-additive - the existing Phase 2c state-aware dedup (against the in-memory cohort + lead-list + competitor index) still runs first; the dedup primitive's Phase 3e check is the SECOND layer (against the canonical `identity_keys:` block on Person notes - catches dedup hits that Phase 2c's name-only index misses because of normalization mismatches or LinkedIn-slug-only matches where the display name diverges, which is common when competitors paraphrase customer names in announcement posts).
 
 ---
 
@@ -294,14 +294,14 @@ competitors_mined:
 ---
 ```
 
-The `competitors_mined` field is unique to this skill — it lets future runs see which competitors have been swept recently and rotate stale ones to the front.
+The `competitors_mined` field is unique to this skill - it lets future runs see which competitors have been swept recently and rotate stale ones to the front.
 
-### Body — required sections
+### Body - required sections
 
 #### 1. Header
 
 ```markdown
-# Competitor customer mining — {N} new + {M} re-engage ({date})
+# Competitor customer mining - {N} new + {M} re-engage ({date})
 
 > _Source: mined {N_competitors} LinkedIn competitor feeds. Total raw mentions: {raw_count}.
 > Dedupe against {entity_count} entities + {leadlist_count} prior lead lists._
@@ -319,7 +319,7 @@ The `competitors_mined` field is unique to this skill — it lets future runs se
 | ... | | | | |
 ```
 
-This is the diagnostic loop closure — over time the user can see which competitors are productive customer-mining surfaces.
+This is the diagnostic loop closure - over time the user can see which competitors are productive customer-mining surfaces.
 
 #### 3. Drain state Dataview
 
@@ -339,7 +339,7 @@ SORT status ASC
 ```markdown
 ## Drain protocol
 
-1. NEW table → `/research-prospect <linkedin_url>` then `/draft-outreach`. **Reference the competitor attribution in the discovery framing** — e.g., "I noticed you're a {Competitor} customer for {use case}; curious about [wedge-relevant concern] of running agents in production."
+1. NEW table → `/research-prospect <linkedin_url>` then `/draft-outreach`. **Reference the competitor attribution in the discovery framing** - e.g., "I noticed you're a {Competitor} customer for {use case}; curious about [wedge-relevant concern] of running agents in production."
 2. RE-ENGAGE table → manual; load existing Person note; re-touch references prior conversation, NOT the competitor mention (that'd be weird if you've already talked to them).
 3. SKIP table → audit trail only.
 ```
@@ -347,21 +347,21 @@ SORT status ASC
 #### 5. NEW candidates table (with `Competitor` column)
 
 ```markdown
-## NEW — {count} fresh customer-derived candidates
+## NEW - {count} fresh customer-derived candidates
 
 | # | Company | Website | Used By Customer For | Competitor (mined) | Buyer (role) | Buyer (name) | LinkedIn | Score | Tier | Hook | Source Post |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 ```
 
-**`Source Post` column** — link to the `feed_post` URN from references where the customer was named. This is the audit trail.
+**`Source Post` column** - link to the `feed_post` URN from references where the customer was named. This is the audit trail.
 
-**`Hook` column** — include the post snippet that named them, plus any quote. This gives `/draft-outreach` raw material.
+**`Hook` column** - include the post snippet that named them, plus any quote. This gives `/draft-outreach` raw material.
 
 #### 6. RE-ENGAGE table (if any)
 
 Same as find-leads.
 
-#### 7. SKIP — collapsed callout
+#### 7. SKIP - collapsed callout
 
 Same as find-leads Phase 4 #6. Bucket: `in-pipeline | parked-vertical | is-competitor | linkedin-unresolvable | dedup-hit | dedup-conflict`.
 
@@ -387,7 +387,7 @@ The `dedup-hit` + `dedup-conflict` buckets are populated by Phase 3e (the Pillar
 
 > **DEFAULT OFF for the first release.** This phase is a no-op unless `--enroll` was on the command line. The disclaimer is repeated here so a reader landing on Phase 4.5 in isolation doesn't assume auto-enrollment is on by default. Once you've shaken out the path on a few Lead Lists, flip the default to ON in this skill body and remove this banner.
 
-For each NEW row in the Lead List (skip RE-ENGAGE — those already have Person notes), shell out to the shared enrollment helper:
+For each NEW row in the Lead List (skip RE-ENGAGE - those already have Person notes), shell out to the shared enrollment helper:
 
 ```bash
 python {config.factory.home}/orchestrator/enrollment.py enroll \
@@ -398,11 +398,11 @@ python {config.factory.home}/orchestrator/enrollment.py enroll \
   --scraped-at "<ISO 8601 UTC>" \
   --raw-input-hash "<sha256:hex>" \
   --frontmatter "<YAML string with company, role, source_list, source_channel, score, tier, competitor_source>" \
-  --body "<minimal body — see template below>" \
+  --body "<minimal body - see template below>" \
   --json
 ```
 
-> **Identity-graph dedup (Phase 5.5 Week 1b):** pass `--linkedin` explicitly so dedup runs on the stable LinkedIn slug, not the display name. Status `conflict` (with `report_path`) means 2+ existing records match the candidate — count it toward `conflict_count` and surface to the operator at run end so they can resolve in `~/.outreach-factory/conflicts/` before the next dispatch.
+> **Identity-graph dedup (Phase 5.5 Week 1b):** pass `--linkedin` explicitly so dedup runs on the stable LinkedIn slug, not the display name. Status `conflict` (with `report_path`) means 2+ existing records match the candidate - count it toward `conflict_count` and surface to the operator at run end so they can resolve in `~/.outreach-factory/conflicts/` before the next dispatch.
 
 > **Discovery lineage stamping (Pillar E Week 9-11, per ADR-0036 D169):** the four `--source-*` / `--scraped-at` / `--raw-input-hash` flags stamp the canonical `identity_keys.discovery_lineage:` sub-block on the new Person frontmatter + denormalize the lineage onto every emitted enrollment event. The `--source-skill` value is the closed enum `competitor-customers`. The `--source-list` matches the Lead List filename. The `--scraped-at` is the run's start ISO 8601 UTC timestamp. The `--raw-input-hash` is `sha256:<sha256 of canonical input>` (e.g., the competitor source post URL + the customer's LinkedIn URL).
 
@@ -419,7 +419,7 @@ research_tier: <S | A | B>
 competitor_source: <competitor-slug-they-were-mined-from>
 ```
 
-The `company` value is wrapped in `[[…]]` to match the wikilink convention `/research-prospect` writes — keeps the field consistent before and after a refresh, and renders as a clickable link in Obsidian.
+The `company` value is wrapped in `[[…]]` to match the wikilink convention `/research-prospect` writes - keeps the field consistent before and after a refresh, and renders as a clickable link in Obsidian.
 
 The body to pass:
 
@@ -454,8 +454,8 @@ enrolled_at: <YYYY-MM-DDTHH:MM:SSZ>
 
 - **Every NEW row has a `Source Post`** linking back to the specific competitor announcement.
 - **Customer attribution is named** (which competitor mined them).
-- **Buyer name when possible** — testimonial-quoted individuals take priority over search_people results.
-- **Real dedup numbers** — if SKIP count is 0, the dedup didn't run; verify Phase 0.
+- **Buyer name when possible** - testimonial-quoted individuals take priority over search_people results.
+- **Real dedup numbers** - if SKIP count is 0, the dedup didn't run; verify Phase 0.
 - **Anti-pattern check before save**: scan NEW list for any competitor names, investor firms, or analyst orgs. If found, move to `companies_parked`.
 
 ---
@@ -464,12 +464,12 @@ enrolled_at: <YYYY-MM-DDTHH:MM:SSZ>
 
 - Don't include the competitor's own employees in NEW.
 - Don't include companies in the curated competitor list.
-- Don't accept tagged companies blindly — investors/event-hosts/analyst-firms tag too.
-- Don't extract from posts older than 6 months — customer relationships churn, and a 12-month-old customer announcement says nothing about today.
-- Don't run `search_people` on customer companies that failed ICP — wastes the LinkedIn MCP rate budget.
+- Don't accept tagged companies blindly - investors/event-hosts/analyst-firms tag too.
+- Don't extract from posts older than 6 months - customer relationships churn, and a 12-month-old customer announcement says nothing about today.
+- Don't run `search_people` on customer companies that failed ICP - wastes the LinkedIn MCP rate budget.
 - Don't pitch customers in regulated verticals when the user's `{icp.buyer_description}` forbids them.
-- Don't auto-discover new competitors via `search_companies("agent evaluation")` — that's the keyword-saturation trap. Use the curated list from config.
-- Don't overlap with `/find-leads` runs — this skill produces its own Lead List with `source: competitor-customers`. They're complementary, not redundant.
+- Don't auto-discover new competitors via `search_companies("agent evaluation")` - that's the keyword-saturation trap. Use the curated list from config.
+- Don't overlap with `/find-leads` runs - this skill produces its own Lead List with `source: competitor-customers`. They're complementary, not redundant.
 
 ---
 
@@ -477,7 +477,7 @@ enrolled_at: <YYYY-MM-DDTHH:MM:SSZ>
 
 If a competitor in the input list returns `This LinkedIn Page isn't available` AND `search_companies` returns nothing, flag in the run summary:
 
-> ⚠ Competitor `<slug>` not findable. Check `{discovery.competitor_list_path}` — may have rebranded / shut down. Update doc before next run.
+> ⚠ Competitor `<slug>` not findable. Check `{discovery.competitor_list_path}` - may have rebranded / shut down. Update doc before next run.
 
 If you discover during mining that a "competitor" is actually a now-popular *partner* or *integration target* (e.g., a tagged company in the references is itself in the eval/safety space), surface for review:
 
@@ -487,9 +487,9 @@ If you discover during mining that a "competitor" is actually a now-popular *par
 
 ## See also
 
-- `{discovery.competitor_list_path}` — locked input (user-curated competitor list)
-- `/find-leads` — complementary general-ICP discovery
-- `/find-funded-founders` — sibling discovery channel (VC-mined funding signals)
-- `/research-prospect` — next step after picking a row
-- `/draft-outreach` — drafting; reference competitor-customer framing for the hook
-- `docs/ARCHITECTURE.md` (in outreach-factory repo) — factory pipeline + state machine
+- `{discovery.competitor_list_path}` - locked input (user-curated competitor list)
+- `/find-leads` - complementary general-ICP discovery
+- `/find-funded-founders` - sibling discovery channel (VC-mined funding signals)
+- `/research-prospect` - next step after picking a row
+- `/draft-outreach` - drafting; reference competitor-customer framing for the hook
+- `docs/ARCHITECTURE.md` (in outreach-factory repo) - factory pipeline + state machine

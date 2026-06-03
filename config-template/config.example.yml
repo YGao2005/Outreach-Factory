@@ -13,7 +13,7 @@ factory:
   home: "~/code/outreach-factory"
 
 # ============================================================
-# Your company — what you're pitching
+# Your company - what you're pitching
 # ============================================================
 company:
   name: "YourCompany"
@@ -28,11 +28,11 @@ company:
     Example: "what's basically a Sentry but for AI agents, catching when they break their own rules in production"
   wedge_failure_mode: |
     Failure-mode framed version (best for technical buyers who think in failures).
-    Example: "detecting when agents violate policies their builders wrote — wrong refunds, opt-out failures, that kind of thing"
+    Example: "detecting when agents violate policies their builders wrote - wrong refunds, opt-out failures, that kind of thing"
   website: "yourcompany.com"
 
 # ============================================================
-# Founder / sender identity — what shows up in the email
+# Founder / sender identity - what shows up in the email
 # ============================================================
 founder:
   name: "Your Full Name"           # appears in sign-off
@@ -42,18 +42,18 @@ founder:
   # Optional one-line context for cold-pitch openings (right after intro_line).
   # Helps signal you've done real work in the space.
   credibility_breadcrumb: |
-    Example: "spent the last few months looking at agent failure modes — tau2-bench, AgentProcessBench, talking to founders who've shipped agents in production"
+    Example: "spent the last few months looking at agent failure modes - tau2-bench, AgentProcessBench, talking to founders who've shipped agents in production"
   email: "you@example.com"
   # Multi-line email footer. Used as full sign-off in cold-pitch + re-engagement.
   footer_email: |
     Your Name
     Your title · your school/company · Building yourcompany.com
     you@example.com
-  # Optional: doc describing founder voice/signals — used by /research-prospect for fit-scoring
+  # Optional: doc describing founder voice/signals - used by /research-prospect for fit-scoring
   about_path: ""
 
 # ============================================================
-# Vault — where your CRM (markdown frontmatter) lives
+# Vault - where your CRM (markdown frontmatter) lives
 # ============================================================
 vault:
   path: "/path/to/your/vault"
@@ -78,20 +78,20 @@ voice:
   reference_example_path: "skills/draft-outreach/reference-examples.md"
 
 # ============================================================
-# ICP definitions — pointers to your strategy docs (used by /find-leads)
+# ICP definitions - pointers to your strategy docs (used by /find-leads)
 # ============================================================
 icp:
   # Optional: tier-S/A/B definitions + filter rules (free-form markdown). /find-leads reads it
   # to apply the user-defined buyer-shape filter in Phase 3c.
   tier_playbook_path: ""
-  # Optional: known failure modes by vertical — surfaced by /research-prospect for wedge-aligned signals.
+  # Optional: known failure modes by vertical - surfaced by /research-prospect for wedge-aligned signals.
   failure_mode_library_path: ""
   # Optional: short, prose description of who's an in-ICP buyer. Used inline by /find-leads when
   # tier_playbook_path isn't set. Should answer: "what kind of company / role / stage / vertical?"
   buyer_description: ""
 
 # ============================================================
-# Discovery — curated source lists for /competitor-customers, /find-funded-founders
+# Discovery - curated source lists for /competitor-customers, /find-funded-founders
 # ============================================================
 discovery:
   # Optional: path to your competitor list (markdown). /competitor-customers reads
@@ -106,12 +106,12 @@ discovery:
   vc_slugs: []
 
 # ============================================================
-# Email enrichment — pattern guessing for /research-prospect
+# Email enrichment - pattern guessing for /research-prospect
 # ============================================================
 email_enrich:
   # Optional: path to your email-enrichment script. Script should accept `--name <First>` flag.
   # If empty, /research-prospect falls back to inline pattern computation (no MX-check, no Reoon).
-  # The factory ships orchestrator/enrich_emails.py — point here at it to enable verification:
+  # The factory ships orchestrator/enrich_emails.py - point here at it to enable verification:
   #   script_path: "{factory.home}/orchestrator/enrich_emails.py"
   script_path: ""
   # Optional: path to your Reoon API key file (one line, the key, chmod 600).
@@ -128,7 +128,7 @@ email_enrich:
     - "{first[0]}{last}@{domain}"
 
 # ============================================================
-# Scraper auth — session cookies for logged-in fetches
+# Scraper auth - session cookies for logged-in fetches
 # ============================================================
 scraper_auth:
   # Optional: path to Twitter/X cookies JSON (array of cookie objects).
@@ -137,7 +137,7 @@ scraper_auth:
   twitter_cookies_path: ""
 
 # ============================================================
-# Send mechanics — optional, if unconfigured sends are user-manual
+# Send mechanics - optional, if unconfigured sends are user-manual
 # ============================================================
 email_send:
   gmail_api: false          # set true if Gmail API credentials configured
@@ -154,5 +154,41 @@ email_send:
   linkedin_manifest_path: ""
   # LinkedIn free-tier weekly invite soft limit (varies by account history).
   linkedin_weekly_invite_limit: 100
+  # Daily email send cap. `outreach-factory status` shows sends today vs this
+  # number so you know your headroom ("23 remaining today"). Reputation, not
+  # this number, is the real constraint on a cold domain: start low (~25/day on
+  # a warmed mailbox) and ramp slowly. Leave unset to track raw counts only.
+  daily_send_cap: 25
   # Name in the email From header (defaults to founder.name if empty).
   sender_name: ""
+
+# ============================================================
+# Warming - health-gated ramp toward the daily send cap
+# ============================================================
+# A fresh sending domain or mailbox has no reputation. Sending at the full
+# daily_send_cap on day one looks like spam, so the factory ramps INTO the cap:
+# a handful of sends in week 1, more each week, steady at the cap after ~5
+# weeks. The ramp is HELD (stops escalating) when the trailing 7-day bounce
+# rate climbs over 5% - a degrading mailbox is never asked to send more.
+#
+# `outreach-factory status` shows today's ceiling, e.g.
+#   "warming ceiling  8/day  (week 2 of 5 ramp; health ok)"
+#   "warming ceiling  5/day  (week 3 of 5 ramp; HELD: bounce rate 7% over the 5% gate)"
+#
+# What this does NOT do: it does not BUILD reputation. That takes weeks of
+# real, engaged sends and is best handed to a warmup network (Mailwarm,
+# Warmup Inbox, Instantly). The factory owns the ramp + the health gate only.
+warming:
+  # Set true to surface the warming ceiling in `outreach-factory status`.
+  # Leave false/unset and status shows raw counts only.
+  enabled: false
+  # The ramp anchor (ISO date, e.g. "2026-06-01"). This is the day warming
+  # began - usually the day the mailbox first sent. If empty, the factory
+  # infers it from the earliest send_confirmed in your ledger.
+  start_date: ""
+  # Optional: how many weeks to ramp from a small week-1 floor up to the full
+  # daily_send_cap. Defaults to a 5-week schedule (20/40/60/80/100% of the cap).
+  # weeks_to_full: 5
+  # Optional: explicit per-week fractions of the cap, overriding weeks_to_full.
+  # The last value should be 1.0 (steady at the cap). Example for a slow ramp:
+  # fractions: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]

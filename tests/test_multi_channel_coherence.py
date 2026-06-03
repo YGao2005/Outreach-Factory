@@ -9892,9 +9892,13 @@ class TestPillarIExitCriterion:
             required.append(doctor.check_factory_home(parsed))
             required.append(doctor.check_vault(parsed))
         required.append(doctor.check_python_deps())
-        for server in doctor.REQUIRED_MCPS:
-            required.append(doctor.check_mcp(server))
         required.append(doctor.check_migrations(parsed))
+        # MCP servers are optional features (discovery + the LinkedIn channel),
+        # not required for the core onboarding + email send path. With all three
+        # configured above they read OK; a missing one would WARN, never FAIL.
+        mcp_checks = [doctor.check_mcp(s, e) for s, e in doctor.FEATURE_MCPS]
+        for r in mcp_checks:
+            assert r["status"] == doctor.OK, f"ROW 1: mcp {r['name']} not OK: {r}"
 
         anomalies = [r for r in required if r["status"] == doctor.FAIL]
         assert anomalies == [], f"ROW 1 — doctor reports anomalies: {anomalies}"

@@ -1,99 +1,15 @@
-"""Pillar H Week 1 + Week 4 + Week 4 follow-up + Week 5 + Week 5 follow-up
-— daemon health endpoint primitive (per ADR-0060 D334 + D335 invariant 3;
-Week 1 follow-up adds the ``runner: "DaemonRunner"`` type hint via
-:data:`TYPE_CHECKING` import per per-week-reviewer P3-7 closure; Week 2 +
-Week 2 follow-up + Week 3 did NOT materially modify this module; Week 3
-follow-up extends module docstring naming each per-week ADR per per-week-
-reviewer P3-5 closure; Week 5 + Week 5 follow-up did NOT materially modify
-this module — but the W3 follow-up P3-5 closure's discipline-scope
-extension to materially-unchanged modules in the same per-pillar package
-+ the W5 follow-up P3-9 closure require this docstring to name Week 5 +
-Week 5 follow-up so operators reading any single file in the per-pillar
-package see the per-week trajectory; Week 4 lands :func:`serve_health_endpoint`
-body wiring asyncio-
-aiohttp HTTP server on ``127.0.0.1:8080`` per R036 + ``health_probe``
-rate-limit per R038 + :func:`build_health_probe_payload` emit-shape
-factory per ADR-0063 D345-D348 + ADR-0010 D17 + the Pillar E
-:data:`EMITTED_BY` precedent + the Pillar H Week 3 follow-up P2-1
-closure; Week 4 follow-up closes per-week-reviewer P2-1
-framework-neutrality text drift at ADR-0063 D348 + the body's lazy-
-import comment — the seam kwargs ``emit_fn`` + ``now_fn`` + ``bind_addr``
-substitute BACKENDS (ledger + clock + IP), NOT HTTP server choice
-(operators wanting alternative HTTP servers MUST fork the function
-body) — the THIRD ADR-vs-actual-impl drift caught by the per-week-
-reviewer's cross-pillar back-audit discipline (W2 P3-8 OTel Resource +
-W3 P2-1 ``_emitted_by`` + W4 P2-1 framework-neutrality text); P2-2
-``_compute_health_status`` ValueError swallow vs
-:meth:`DaemonRunner.shutdown` refuse-loud asymmetry documented at the
-docstring + pinned via regression-barrier test; P3-3/P3-4/P3-5 Week 4
-placeholder semantics documented at field docstrings + pinned via
-trajectory regression-barrier tests (``policy_loaded`` + Week 7+;
-``last_reconcile_pass_age_seconds`` + Week 7+; ``outcome="degraded"``
-unreachable through :func:`_compute_health_status` + Week 6+); P3-6
-``bind_addr`` refuse-loud at boundary via :func:`ipaddress.ip_address`
-per Pillar H Week 2 follow-up P2-1 next-tier-invariant-field
-refuse-loud precedent; P3-8 Pillar I per-tenant per-container
-``_handle_health`` closure-captures-runner trajectory documented; P3-9
-:func:`build_health_probe_payload` ``remote_addr`` arg description
-extended naming the Pillar I reverse-proxy ``X-Forwarded-For``
-trajectory; P3-10 :func:`serve_health_endpoint` return type hint
-narrowed via :data:`TYPE_CHECKING` import of
-:class:`aiohttp.web.AppRunner`; NEW-1
-:class:`HealthStatus.__post_init__` validates ``outcome`` +
-``lifecycle_state`` in their closed-sets per defense-in-depth at the
-JSON-serialized HTTP body boundary; NEW-2 Content-Type
-``application/json`` regression-barrier test; NEW-3 Pillar I middleware
-trajectory documented at :func:`serve_health_endpoint` docstring).
+"""Daemon health endpoint (operations tier).
 
-The Pillar H daemon serves a HTTP health endpoint on the configured
-port (:attr:`DaemonConfig.health_port`, default 8080) that returns the
-daemon's lifecycle state per :data:`DAEMON_LIFECYCLE_STATES` +
-operator-readable diagnostic context. The endpoint follows the
-Kubernetes readiness-probe convention:
+Serves a rate-limited liveness/health endpoint for the daemon over aiohttp on
+127.0.0.1:8080. Used by process supervisors and uptime probes; not needed by an
+adopter who only sends cold email.
 
-* HTTP 200 + JSON body iff :attr:`HealthStatus.outcome != "unhealthy"`
-  (the ``"ok"`` / ``"degraded"`` cases — daemon ``ready`` + ledger
-  reachable + policy loaded).
-* HTTP 503 + JSON body iff :attr:`HealthStatus.outcome == "unhealthy"`
-  (the ``"initializing"`` / ``"draining"`` / ``"stopped"`` lifecycle
-  states OR ledger unreachable OR policy load failed).
+Public surface:
+  HealthStatus                      the computed health snapshot.
+  serve_health_endpoint(...)        start the aiohttp health server.
+  build_health_probe_payload(...)   ledger event-shape factory for probes.
 
-The endpoint binds to ``127.0.0.1`` by default per R036 (Pillar G
-Week 4's security-by-default Prometheus exposition pattern per
-ADR-0053 D291) — operators wanting cross-machine probes wire a
-reverse proxy OR pass ``bind_addr="0.0.0.0"`` deliberately.
-
-Each probe emits a ``health_probe`` ledger event per
-:data:`DAEMON_NEW_EVENT_CLASSES` rate-limited at
-:attr:`DaemonConfig.health_probe_rate_limit_seconds` per R038
-mitigation (high-frequency k8s probes would inflate the ledger
-without the rate-limit; default 30s caps a 10s-cadence probe at
-~2880 events/day per single-tenant operator within the daemon's
-diagnostic budget).
-
-The Week 2 follow-up P2-1 closure validates
-:attr:`DaemonConfig.health_probe_rate_limit_seconds >= 0` at
-:func:`_validate_config`; that refuse-loud rule binds Week 4's
-rate-limit arithmetic at :func:`serve_health_endpoint` body.
-
-The Week 4 body uses **operator-deliberate test seam kwargs** per the
-Pillar G TEST-ONLY convention + the Pillar H Week 2 / Week 3
-precedent — production callers pass `port` + `runner`; tests inject
-spies via `emit_fn` + `now_fn` + the operator-deliberate `bind_addr`.
-
-**Framework-neutrality contract** per Pillar H Week 4 follow-up P2-1
-closure (two-tiered):
-
-1. **Operator-deliberate seam kwargs** (``emit_fn`` + ``now_fn`` +
-   ``bind_addr``) — operators substitute alternative ledger backends +
-   clock sources + bind addresses WITHOUT replacing the function body.
-   The HTTP server choice (aiohttp) is NOT swappable via these seams.
-2. **Operator fork** — operators wanting alternative HTTP servers
-   (Tornado / FastAPI / Starlette / etc.) MUST replace the entire
-   :func:`serve_health_endpoint` function body. The aiohttp dependency
-   at ``requirements.txt`` is the v1 default; the dependency upper
-   bound at ``aiohttp>=3.9,<4`` per Pillar H Week 4 follow-up P3-7
-   closure preserves operator dependency-budget stability.
+Design history: ADR-0060 D334-D335.
 """
 
 from __future__ import annotations

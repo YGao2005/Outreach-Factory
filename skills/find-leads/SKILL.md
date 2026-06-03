@@ -33,13 +33,13 @@ allowed-tools:
   - mcp__ScraplingServer__screenshot
 ---
 
-# /find-leads — Discover prospects matching your ICP (state-aware)
+# /find-leads - Discover prospects matching your ICP (state-aware)
 
 You are a lead-discovery agent. Your job: take a natural-language ICP description, surface 10-20 candidate companies that fit, identify the right buyer-shaped person at each, **dedupe against the existing CRM**, and save a structured lead list to the user's Obsidian vault.
 
 ---
 
-## ⚙️ Pre-flight — load user config
+## ⚙️ Pre-flight - load user config
 
 **Before doing anything else, read the user's config:**
 
@@ -67,7 +67,7 @@ Examples:
 - `/find-leads production AI agents in fintech with public engineering blog`
 - `/find-leads agent companies that recently posted job openings for AI/ML platform engineers`
 
-**`--enroll` (opt-in for now):** when set, every NEW row also gets a Person note stub created in `{vault.queue_subdir}/` with `pipeline_stage: queued` so `/dispatch-outreach` will pick it up in the next run. See Phase 4.5 below. Default is OFF for one release while the auto-enrollment path is being shaken out — once trusted, flip the default to ON in this skill body.
+**`--enroll` (opt-in for now):** when set, every NEW row also gets a Person note stub created in `{vault.queue_subdir}/` with `pipeline_stage: queued` so `/dispatch-outreach` will pick it up in the next run. See Phase 4.5 below. Default is OFF for one release while the auto-enrollment path is being shaken out - once trusted, flip the default to ON in this skill body.
 
 ---
 
@@ -90,7 +90,7 @@ Load these from the user's vault (paths from config):
 | File | Why |
 |---|---|
 | `{icp.tier_playbook_path}` (optional) | Tier-S/A/B rules + ICP filter definitions. Drives Phase 3c. Skip if empty. |
-| `{vault.lead_lists_dir}/` (list all files) | Existing pipeline — don't re-discover what we already have |
+| `{vault.lead_lists_dir}/` (list all files) | Existing pipeline - don't re-discover what we already have |
 
 Use `mcp__obsidian__obsidian_list_files_in_dir` on `{vault.lead_lists_dir}/` to see all prior lists.
 
@@ -102,13 +102,13 @@ Before searching, load every previously-evaluated company/person name into memor
 
 `obsidian_list_files_in_dir` on each existing subdir of `{vault.people_dir}/` and `{vault.companies_dir}/` (typically `{vault.queue_subdir}`, `{vault.active_subdir}`, and any user-defined closed/won/dormant subdirs).
 
-For closed-cohort entries only (subdirs that hold finished prospects — user-defined; check vault listing), `obsidian_batch_get_file_contents` to read `status` (dead/dormant/dropped) and `next_action_date` (dormant re-touch eligibility). Don't read Queue/Active files — name match alone = skip.
+For closed-cohort entries only (subdirs that hold finished prospects - user-defined; check vault listing), `obsidian_batch_get_file_contents` to read `status` (dead/dormant/dropped) and `next_action_date` (dormant re-touch eligibility). Don't read Queue/Active files - name match alone = skip.
 
 #### Source 2: Prior Lead Lists (frontmatter `companies:` + `companies_parked:` arrays)
 
 `obsidian_list_files_in_dir` on `{vault.lead_lists_dir}/`, then `obsidian_batch_get_file_contents` on every `.md` in that directory. From each Lead List's frontmatter, read:
-- `companies:` — names actively pursued from that list
-- `companies_parked:` — names evaluated and rejected (parked vertical, wrong ICP, etc.)
+- `companies:` - names actively pursued from that list
+- `companies_parked:` - names evaluated and rejected (parked vertical, wrong ICP, etc.)
 
 Both go into the dedup index with provenance: `{name, list_file, bucket: pursued|parked}`.
 
@@ -144,7 +144,7 @@ dedup_index = {
 Open ONE persistent stealthy session at the start of the run. Reuse for all per-source fetches. Close it at the end.
 
 ```python
-# Conceptual — open once
+# Conceptual - open once
 session_id = mcp__ScraplingServer__open_session(
     session_type="stealthy",
     headless=True,
@@ -193,25 +193,25 @@ When fetching N>3 URLs from the same source at the same time, prefer `bulk_get` 
 
 ### Discovery sources
 
-#### Tier 1 — high-quality lead sources
+#### Tier 1 - high-quality lead sources
 
-1. **YC company directory** — search `site:ycombinator.com/companies/{keyword}` via WebSearch, then `stealthy_fetch` each company page for description + team
-2. **Hacker News** — "Show HN: <agent-related>", "Ask HN: who's hiring" with AI/agent keywords; `get` for HN pages
-3. **Product Hunt** — recent launches in AI agents category; `stealthy_fetch`
-4. **Wellfound** — search by tag (AI, LLM, agents); `stealthy_fetch`
-5. **Crunchbase** — funding rounds in AI agent space; `stealthy_fetch` (often metered)
+1. **YC company directory** - search `site:ycombinator.com/companies/{keyword}` via WebSearch, then `stealthy_fetch` each company page for description + team
+2. **Hacker News** - "Show HN: <agent-related>", "Ask HN: who's hiring" with AI/agent keywords; `get` for HN pages
+3. **Product Hunt** - recent launches in AI agents category; `stealthy_fetch`
+4. **Wellfound** - search by tag (AI, LLM, agents); `stealthy_fetch`
+5. **Crunchbase** - funding rounds in AI agent space; `stealthy_fetch` (often metered)
 
-#### Tier 2 — discovery via inference
+#### Tier 2 - discovery via inference
 
-6. **Job postings** — companies hiring "ML platform engineer," "agent reliability engineer," "AI infrastructure" → they likely run agents in production. Use `bulk_stealthy_fetch` on Lever/Greenhouse/Ashby URLs.
-7. **Conference speakers** — AI Engineer Summit, Latent Space, AI tinkerers — speakers' companies
-8. **GitHub contributors** — to popular agent libs (langchain, langgraph, openai-agents, autogen) → their employer often runs agents; `get` for static GH pages
-9. **Twitter/X public posts** — search via WebSearch for "our agent did X" + similar; `stealthy_fetch` profile pages
+6. **Job postings** - companies hiring "ML platform engineer," "agent reliability engineer," "AI infrastructure" → they likely run agents in production. Use `bulk_stealthy_fetch` on Lever/Greenhouse/Ashby URLs.
+7. **Conference speakers** - AI Engineer Summit, Latent Space, AI tinkerers - speakers' companies
+8. **GitHub contributors** - to popular agent libs (langchain, langgraph, openai-agents, autogen) → their employer often runs agents; `get` for static GH pages
+9. **Twitter/X public posts** - search via WebSearch for "our agent did X" + similar; `stealthy_fetch` profile pages
 
-#### Tier 3 — adjacent-but-noisy
+#### Tier 3 - adjacent-but-noisy
 
-10. **AI newsletter mentions** — Latent Space podcast, Last Week in AI — companies they cover
-11. **Public engineering blogs** — `get` is usually enough
+10. **AI newsletter mentions** - Latent Space podcast, Last Week in AI - companies they cover
+11. **Public engineering blogs** - `get` is usually enough
 
 ---
 
@@ -223,9 +223,9 @@ For EACH candidate company surfaced in Phase 2:
 
 1. Fetch the company's `/about`, `/team`, `/careers` pages (per fetcher table above)
 2. Identify the buyer-shaped person per `{icp.buyer_description}` (typically: CTO, Head of AI, VP Eng, founding engineer with relevant product ownership). If multiple, pick the most public-facing technical leader.
-3. Find their LinkedIn URL — search `"{Name}" "{Company}" LinkedIn` if not on team page
-4. Score ICP fit (1-10) — be honest; reject anything <6
-5. Note one specific public artifact — a blog post, talk, GitHub repo, conference appearance — that proves they're a real prospect (not a stub)
+3. Find their LinkedIn URL - search `"{Name}" "{Company}" LinkedIn` if not on team page
+4. Score ICP fit (1-10) - be honest; reject anything <6
+5. Note one specific public artifact - a blog post, talk, GitHub repo, conference appearance - that proves they're a real prospect (not a stub)
 
 ### 3b. State-aware dedup (the "learning" part)
 
@@ -241,17 +241,17 @@ For both **company name** and **person name** (after normalization), look up in 
 | Person in `{vault.queue_subdir}` | **SKIP** | "queued from {source_list or 'manual'}" |
 | Company in Lead List `companies:` array | **SKIP** | "in {list-name} (pursued)" |
 | Company in Lead List `companies_parked:` array | **SKIP** | "in {list-name} (parked-vertical)" |
-| No match anywhere | **NEW** | — |
+| No match anywhere | **NEW** | - |
 
-Track the bucket + reason on every candidate as you process. **Do this BEFORE any per-company detail fetch** — saves Scrapling fetches on names you'll skip anyway.
+Track the bucket + reason on every candidate as you process. **Do this BEFORE any per-company detail fetch** - saves Scrapling fetches on names you'll skip anyway.
 
 ### 3c. ICP filter (apply only to NEW + RE-ENGAGE)
 
 If `{icp.tier_playbook_path}` is configured, apply the rules defined there. Otherwise, use the prose criteria in `{icp.buyer_description}` from config, augmented with these structural defaults:
 
-- **Has public surface area** — website, blog, GitHub, Twitter, podcast, talks. Need things to reference for hyper-personalization.
-- **Has a buyer-shaped role visible** — public team page lists the kind of role described in `{icp.buyer_description}`.
-- **Stage** — typically Series Seed → Series C (10-200 employees) unless user explicitly broadens. Pre-seed too early; enterprise too slow without warm intro.
+- **Has public surface area** - website, blog, GitHub, Twitter, podcast, talks. Need things to reference for hyper-personalization.
+- **Has a buyer-shaped role visible** - public team page lists the kind of role described in `{icp.buyer_description}`.
+- **Stage** - typically Series Seed → Series C (10-200 employees) unless user explicitly broadens. Pre-seed too early; enterprise too slow without warm intro.
 
 If the user's wedge (`{company.wedge_plain}`) implies vertical exclusions (e.g. SOC2/HIPAA-blocking), respect them. The buyer_description should encode these.
 
@@ -263,15 +263,15 @@ If `{icp.tier_playbook_path}` defines tier rules, use them. Default semantics if
 2. Does the company match the wedge (`{company.wedge_plain}`)? If no → bucket should be SKIP (vertical mismatch), not NEW.
 3. **Default → S.** Assume full `/research-prospect` will run downstream.
 4. **Downgrade to A** ONLY if the public surface is constrained: LinkedIn locked-private + no X presence + no podcast/blog → `/research-prospect` would yield ≤2 hooks. Note "downgrade reason" in the Hook column.
-5. **Downgrade to B** ONLY if even light research returns nothing extractable (rare; usually this is a C — drop). Note "downgrade reason."
+5. **Downgrade to B** ONLY if even light research returns nothing extractable (rare; usually this is a C - drop). Note "downgrade reason."
 
 Record the tier in the candidate's row and add a `tier-S` / `tier-A` / `tier-B` tag entry to be propagated onto the Person note at draft time.
 
-**Expected distribution per ~10-prospect batch**: ~7-9 S + ~1-3 A + 0-1 B. If a batch comes back with >2 A/B candidates, the ICP filter (3c above) is leaking thin-surface prospects — tighten it (or sharpen `{icp.buyer_description}`) before saving the Lead List.
+**Expected distribution per ~10-prospect batch**: ~7-9 S + ~1-3 A + 0-1 B. If a batch comes back with >2 A/B candidates, the ICP filter (3c above) is leaking thin-surface prospects - tighten it (or sharpen `{icp.buyer_description}`) before saving the Lead List.
 
 ### 3e. Pre-enrichment dedup check (Pillar E)
 
-> **Added Pillar E Week 2 (ADR-0033 D152).** Before any future Apollo / PDL / Reoon enrichment lands in this skill, consult the dedup primitive so a candidate already in the vault doesn't burn a Reoon credit on re-verification. Today `find-leads` doesn't call Apollo/PDL/Reoon (per the rule in the "Don't" section below), so the practical Week 2 effect is the operator-visible `discovery_dedup_hit` ledger event for Pillar G's per-source cost-attribution dashboard — but the integration is in place so when Apollo/PDL/Reoon lands here (or in the other three discovery skills in subsequent Pillar E weeks), the cost-avoidance behavior is wired by default.
+> **Added Pillar E Week 2 (ADR-0033 D152).** Before any future Apollo / PDL / Reoon enrichment lands in this skill, consult the dedup primitive so a candidate already in the vault doesn't burn a Reoon credit on re-verification. Today `find-leads` doesn't call Apollo/PDL/Reoon (per the rule in the "Don't" section below), so the practical Week 2 effect is the operator-visible `discovery_dedup_hit` ledger event for Pillar G's per-source cost-attribution dashboard - but the integration is in place so when Apollo/PDL/Reoon lands here (or in the other three discovery skills in subsequent Pillar E weeks), the cost-avoidance behavior is wired by default.
 
 For each NEW candidate row (from Phase 3b's NEW bucket), after Phase 3a confirmed buyer fit + Phase 3c passed ICP + Phase 3d assigned tier:
 
@@ -292,11 +292,11 @@ The CLI returns JSON with `status` ∈ `{not_duplicate, duplicate, conflict}` + 
 | `duplicate` | `true` | The candidate is already in the vault. Re-bucket the row to SKIP with reason `"dedup-hit: matched <person_id> on <matched_classes>"`. The `--apply` flag has already emitted the `discovery_dedup_hit` event. Do NOT call enrollment (avoids a redundant `enrollment_skipped_exists` event). |
 | `conflict` | `true` | 2+ existing Persons match the candidate's keys OR an ambiguous-shared-email scenario. The CLI's JSON output names the `report_path` (a YAML conflict report at `~/.outreach-factory/conflicts/<ts>-<random>.yml`). Re-bucket the row to SKIP with reason `"dedup-conflict: see <report_path>"`. The `--apply` flag has emitted the `discovery_dedup_conflict` event. Aggregate the conflict count + surface at run end. |
 
-> **Why `--apply`:** the dry-run default (no `--apply`) reports the dedup outcome but does NOT append the event to the ledger. Pillar G's per-source cost-attribution dashboard depends on the ledger event landing — operators running `/find-leads` interactively (the production cadence) pass `--apply` so the dashboard sees every dedup hit. Test injection / CI / a future `--dry-run` skill flag MAY omit `--apply`; that's the escape valve.
+> **Why `--apply`:** the dry-run default (no `--apply`) reports the dedup outcome but does NOT append the event to the ledger. Pillar G's per-source cost-attribution dashboard depends on the ledger event landing - operators running `/find-leads` interactively (the production cadence) pass `--apply` so the dashboard sees every dedup hit. Test injection / CI / a future `--dry-run` skill flag MAY omit `--apply`; that's the escape valve.
 
 > **Per ADR-0032 D148 the privacy invariant:** the `--source-list` value is OPERATOR-PRIVATE. The CLI stamps it on the emitted event for direct ledger query but Pillar G dashboards NEVER aggregate by `source_list` (only by `source_skill`). The Layer 1 defense is the test corpus pin (`test_source_list_is_operator_private`) which fails loud if a future Pillar G contributor adds `--breakdown source_list` to the funnel CLI.
 
-This phase is content-additive — the existing Phase 3b state-aware dedup (against the in-memory cohort + lead-list index) still runs first; the dedup primitive's Phase 3e check is the SECOND layer (against the canonical `identity_keys:` block on Person notes — catches dedup hits that Phase 3b's name-only index misses because of normalization mismatches).
+This phase is content-additive - the existing Phase 3b state-aware dedup (against the in-memory cohort + lead-list index) still runs first; the dedup primitive's Phase 3e check is the SECOND layer (against the canonical `identity_keys:` block on Person notes - catches dedup hits that Phase 3b's name-only index misses because of normalization mismatches).
 
 ---
 
@@ -328,7 +328,7 @@ companies:
   - <Company Name 2>
 companies_parked:
   # company display names of SKIP candidates that were rejected for ICP/vertical reasons
-  # (do NOT include companies SKIP'd because they're already in pipeline — those are tracked elsewhere)
+  # (do NOT include companies SKIP'd because they're already in pipeline - those are tracked elsewhere)
   - <Parked Company 1>
 ---
 ```
@@ -340,7 +340,7 @@ companies_parked:
 #### 1. Header
 
 ```markdown
-# {Query slug} — {N} new + {M} re-engage ({date})
+# {Query slug} - {N} new + {M} re-engage ({date})
 
 > _Source: {source channel}. Query: "{original query}". Dedupe ran against {entity_count} existing entities + {leadlist_count} prior Lead Lists._
 ```
@@ -364,14 +364,14 @@ SORT status ASC
 ## Drain protocol
 
 1. NEW table → `/draft-outreach <Lead List path> --row=N --register cold-pitch` (the skill auto-populates `source_list` and `source_channel` on the new Person notes)
-2. RE-ENGAGE table → manual; load the existing Person note, draft a re-touch (NOT a fresh cold touch — reference prior conversation)
+2. RE-ENGAGE table → manual; load the existing Person note, draft a re-touch (NOT a fresh cold touch - reference prior conversation)
 3. SKIP table is informational only (no action needed)
 ```
 
 #### 4. NEW candidates table
 
 ```markdown
-## NEW — {count} fresh candidates
+## NEW - {count} fresh candidates
 
 | # | Company | Website | AI Agent Product | Buyer (role) | Buyer (name) | LinkedIn | Score | Tier | Hook | Source URL |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -382,18 +382,18 @@ The **Tier** column carries `S` / `A` / `B` per Phase 3d. `/draft-outreach` read
 #### 5. RE-ENGAGE table (only if any)
 
 ```markdown
-## RE-ENGAGE — {count} dormant past-due
+## RE-ENGAGE - {count} dormant past-due
 
 | # | Person | Company | Last touch | Past-due since | Notes for re-touch |
 |---|---|---|---|---|---|
 ```
 
-#### 6. SKIP — collapsed summary (not a full table)
+#### 6. SKIP - collapsed summary (not a full table)
 
 > **Do NOT print a 13-row SKIP table inline.** It dilutes the NEW/RE-ENGAGE signal. Output a 1-line count + collapsed callout.
 
 ```markdown
-## SKIP — {count} already covered
+## SKIP - {count} already covered
 
 > {count_in_pipeline} in active pipeline · {count_lead_list_pursued} in prior lead lists · {count_parked_vertical} parked-vertical · {count_other} other
 
@@ -419,7 +419,7 @@ Brief 1-line explanation per score band.
 
 > **DEFAULT OFF for the first release.** This phase is a no-op unless `--enroll` was on the command line. The disclaimer is repeated here so a reader landing on Phase 4.5 in isolation doesn't assume auto-enrollment is on by default. Once you've shaken out the path on a few Lead Lists, flip the default to ON in this skill body and remove this banner.
 
-For each NEW candidate row in the Lead List (skip RE-ENGAGE — those already have Person notes; skip SKIP — those are intentionally out), shell out to the shared enrollment helper:
+For each NEW candidate row in the Lead List (skip RE-ENGAGE - those already have Person notes; skip SKIP - those are intentionally out), shell out to the shared enrollment helper:
 
 ```bash
 python {config.factory.home}/orchestrator/enrollment.py enroll \
@@ -430,13 +430,13 @@ python {config.factory.home}/orchestrator/enrollment.py enroll \
   --scraped-at "<ISO 8601 UTC>" \
   --raw-input-hash "<sha256:hex>" \
   --frontmatter "<YAML string with company, role, source_list, source_channel, tier, score>" \
-  --body "<minimal body — see template below>" \
+  --body "<minimal body - see template below>" \
   --json
 ```
 
-> **Identity-graph dedup (Phase 5.5 Week 1b):** pass `--linkedin` explicitly so dedup runs on the stable LinkedIn slug, not the display name. New status `conflict` (with `report_path`) means 2+ existing records intersect the candidate's identity keys — aggregate into `conflict_count` and surface at run end.
+> **Identity-graph dedup (Phase 5.5 Week 1b):** pass `--linkedin` explicitly so dedup runs on the stable LinkedIn slug, not the display name. New status `conflict` (with `report_path`) means 2+ existing records intersect the candidate's identity keys - aggregate into `conflict_count` and surface at run end.
 
-> **Discovery lineage stamping (Pillar E Week 9-11, per ADR-0036 D169):** the four `--source-*` / `--scraped-at` / `--raw-input-hash` flags stamp the canonical `identity_keys.discovery_lineage:` sub-block on the new Person frontmatter + denormalize the lineage onto every emitted enrollment event (`enrolled` + `enrollment_skipped_exists` + `enrollment_conflict` + `needs_identity_upgrade`). The `--source-skill` value is the closed enum `find-leads` for this skill. The `--source-list` matches the Lead List filename (operator-private per ADR-0032 D148 — never aggregated by Pillar G dashboards). The `--scraped-at` is the run's start ISO 8601 UTC timestamp. The `--raw-input-hash` is `sha256:` + sha256 hex of the per-candidate canonical input (e.g., `<linkedin-url>|<source-url>`). The frontmatter YAML's legacy `source_channel:` + `source_list:` fields stay (back-compat for any consumer not yet reading `source_skill`).
+> **Discovery lineage stamping (Pillar E Week 9-11, per ADR-0036 D169):** the four `--source-*` / `--scraped-at` / `--raw-input-hash` flags stamp the canonical `identity_keys.discovery_lineage:` sub-block on the new Person frontmatter + denormalize the lineage onto every emitted enrollment event (`enrolled` + `enrollment_skipped_exists` + `enrollment_conflict` + `needs_identity_upgrade`). The `--source-skill` value is the closed enum `find-leads` for this skill. The `--source-list` matches the Lead List filename (operator-private per ADR-0032 D148 - never aggregated by Pillar G dashboards). The `--scraped-at` is the run's start ISO 8601 UTC timestamp. The `--raw-input-hash` is `sha256:` + sha256 hex of the per-candidate canonical input (e.g., `<linkedin-url>|<source-url>`). The frontmatter YAML's legacy `source_channel:` + `source_list:` fields stay (back-compat for any consumer not yet reading `source_skill`).
 
 The frontmatter YAML to pass per row (substitute from the row's columns):
 
@@ -450,7 +450,7 @@ research_tier: <S | A | B>
 score: <1-10>
 ```
 
-The `company` value is wrapped in `[[…]]` to match the wikilink convention `/research-prospect` writes — keeps the field consistent before and after a refresh, and renders as a clickable link in Obsidian.
+The `company` value is wrapped in `[[…]]` to match the wikilink convention `/research-prospect` writes - keeps the field consistent before and after a refresh, and renders as a clickable link in Obsidian.
 
 The body to pass:
 
@@ -467,7 +467,7 @@ Source: <Source URL column>.
 Helper output is JSON: `{"ok": bool, "status": "created" | "exists" | "error", "path": str | null, "reason": str}`.
 
 - `created` → enrolled successfully; count toward `enrolled_count`.
-- `exists` → Person note already in the vault (dedup matched a prior entry the lead list dedup didn't catch — usually means a name normalization mismatch). Count toward `skipped_count`. Don't error; the prospect was meant to be in the pipeline anyway.
+- `exists` → Person note already in the vault (dedup matched a prior entry the lead list dedup didn't catch - usually means a name normalization mismatch). Count toward `skipped_count`. Don't error; the prospect was meant to be in the pipeline anyway.
 - `error` → rare; log the `reason` and proceed to next row.
 
 After the loop, surface the count in the skill's return string AND in the Lead List frontmatter:
@@ -484,7 +484,7 @@ enrolled_at: <YYYY-MM-DDTHH:MM:SSZ>
 - **No generic entries.** Every NEW row must have at least one specific public artifact in "Hook".
 - **Buyer name when possible.** "CTO unknown" is acceptable for ~20% of rows; >40% means you didn't research enough.
 - **Source URL** for each NEW candidate (not just "found via Google").
-- **Real dedup numbers.** Skip count of 0 means the dedup didn't run — verify Phase 0 actually loaded the index.
+- **Real dedup numbers.** Skip count of 0 means the dedup didn't run - verify Phase 0 actually loaded the index.
 - **Close the Scrapling session.** Always call `close_session` at the end (or via finally).
 
 ---
@@ -507,7 +507,7 @@ If the user runs `/find-leads ai agents` (no specifics), respond with a clarifyi
 
 - Don't return synthetic / fake companies. If a search comes up empty, say so honestly.
 - Don't include companies in regulated industries unless user explicitly asks or the user's `{icp.buyer_description}` permits it (banking, insurance, healthcare-direct, fintech-direct).
-- Don't include LinkedIn URLs you guessed without verifying — say "LinkedIn: not found" if you couldn't confirm.
+- Don't include LinkedIn URLs you guessed without verifying - say "LinkedIn: not found" if you couldn't confirm.
 - Don't dump 50 leads. 10-20 high-quality NEW > 50 low-quality. Filter aggressively.
 - Don't try email-find via Hunter/Apollo (paid APIs unavailable). LinkedIn URL is enough at this stage.
 - Don't open multiple Scrapling sessions in one run. One session, reused, closed at end.
@@ -550,6 +550,6 @@ advance them. RE-ENGAGE: <Name> @ <Company> (dormant since 2026-04-22). Open the
 
 ## See also
 
-- `/research-prospect` — pairs with this skill; produces dossiers from Lead List rows
-- `/draft-outreach` — pairs with this skill; auto-populates `source_list` + `source_channel` when called from a Lead List row
-- `docs/ARCHITECTURE.md` (in outreach-factory repo) — factory pipeline + state machine
+- `/research-prospect` - pairs with this skill; produces dossiers from Lead List rows
+- `/draft-outreach` - pairs with this skill; auto-populates `source_list` + `source_channel` when called from a Lead List row
+- `docs/ARCHITECTURE.md` (in outreach-factory repo) - factory pipeline + state machine

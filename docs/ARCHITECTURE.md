@@ -25,13 +25,66 @@ queued → researched → drafted → ready → sent
 | researched | drafted    | /draft-outreach    | dispatcher     |
 | drafted    | ready      | (user review)      | manual gate    |
 | ready      | sent       | /send-outreach     | dispatcher     |
-| sent       | —          | terminal           | —              |
+| sent       | -          | terminal           | -              |
 
-`pipeline_stage` is the orchestrator's state-machine field. It is **distinct from the CRM `status:` field** (queued / contacted / replied / ...) — `/send-outreach` owns `status:`, the dispatcher owns `pipeline_stage:`. They don't conflict.
+`pipeline_stage` is the orchestrator's state-machine field. It is **distinct from the CRM `status:` field** (queued / contacted / replied / ...) - `/send-outreach` owns `status:`, the dispatcher owns `pipeline_stage:`. They don't conflict.
 
 `/draft-outreach` already runs the humanizer inline as its final pass, so there is no separate `checked` stage. `/humanizer` remains available for manual second-passes.
 
-Stage transitions are atomic per prospect — one subagent processes one prospect through one transition at a time, with marker-file locks at `<vault>/.outreach-factory/locks/<sanitized>.lock`. Stale locks (>30 min) are breakable.
+Stage transitions are atomic per prospect - one subagent processes one prospect through one transition at a time, with marker-file locks at `<vault>/.outreach-factory/locks/<sanitized>.lock`. Stale locks (>30 min) are breakable.
+
+## The framework beneath the skills: four jobs
+
+The skills above are most of what you see. The framework underneath them earns
+its keep with exactly four jobs. Everything else in `orchestrator/` is advanced
+and optional, and stays off the path that actually sends a cold email.
+
+1. **Onboarding.** Clone to a real, deliverable first send. `outreach-factory
+   config` copies the templates; `outreach-factory init` runs the wizard (Gmail
+   OAuth, vault scaffold, a self-test send); `outreach-factory doctor` checks
+   your setup.
+2. **Guardrails.** The honest answer to "why not just skills." A bare skill
+   would let you torch your own domain. The framework will not: it never
+   double-sends (ledger dedup), never over-contacts (cooldown + cross-channel
+   rules), stays compliant (CAN-SPAM footer + one-click unsubscribe +
+   suppression), and refuses on a stale or ambiguous identity.
+3. **State.** An append-only ledger (`~/.outreach-factory/ledger/`) is the
+   source of truth for who was contacted, what stage they reached, and who
+   replied. Vault frontmatter is a denormalized view; the ledger is
+   authoritative, so a crash or a hand-edit of the vault cannot fail the send
+   gate open.
+4. **Status.** `outreach-factory status` answers "what went out, who replied,
+   what is queued, and am I safe to send more today" from the ledger. No
+   dashboards required.
+
+### Where the core lives
+
+| Job | Code |
+| --- | --- |
+| Onboarding | `orchestrator/cli.py`, `orchestrator/multi_tenant/` (the init wizard), `scripts/doctor.py`, `config-template/` |
+| Guardrails | `orchestrator/policy/` (cooldown / suppression / budget / sending-window / cross-channel / tier rules), `orchestrator/security/` (CAN-SPAM + unsubscribe + at-rest encryption), `orchestrator/identity.py` (dedup keys) |
+| State | `orchestrator/ledger.py` |
+| Status | `outreach-factory status` (`orchestrator/cli.py`) |
+| The gated send | `skills/send-outreach/scripts/send_queued.py` (two-phase commit through the guardrails), `orchestrator/obs.py` (a no-op telemetry shim that keeps the send path dependency-light) |
+
+A cold send needs only `google-auth`, `PyYAML`, and `python-dotenv`.
+
+### Advanced / operations (opt-in, off the send path)
+
+The rest of `orchestrator/` is for operators who want continuous, self-reconciling
+operation. **None of it is on the path that sends a cold email.** That boundary
+is enforced by `tests/test_import_graph_lean.py`, which fails if the send path
+ever imports the advanced tier.
+
+- `orchestrator/daemon/` - a long-running supervisor that runs the pipeline as a service.
+- `orchestrator/observability.py` - full OpenTelemetry metrics + tracing + a Prometheus exposition. Opt in with `OUTREACH_FACTORY_OTEL=1`; otherwise the no-op `obs.py` shim is used and the OTel SDK is not needed.
+- `orchestrator/reconcile.py` - crash recovery + reply/bounce ingestion against the Gmail API.
+- reply classification, conversation tracking, discovery dedup/lineage, email enrichment, the calendar webhook, tier assignment, and the funnel diagnostic.
+- `orchestrator/migrations/` - a schema-migration framework for the ledger / policy / vault stores.
+
+### Verifying the split
+
+`python3 tests/golden_path/gate.py --core` runs the four jobs + the send path (fast); `--full` runs everything. The suite is about 80% advanced (704 core tests vs 2818 operations), a fair picture of where the surface area is: a small core, a large optional tier.
 
 ## Subscription billing
 
@@ -52,8 +105,8 @@ Fresh subagent per stage solves this architecturally:
 
 ## Concurrency model
 
-- **Across prospects**: parallel — N subagents on N different prospects simultaneously
-- **Within a prospect**: serial — one stage at a time, frontmatter advances atomically
+- **Across prospects**: parallel - N subagents on N different prospects simultaneously
+- **Within a prospect**: serial - one stage at a time, frontmatter advances atomically
 - **File locking**: the dispatcher holds the queue; agents only touch files for prospects assigned to them
 
 ## Humanizer (fresh-context anti-tell pass)
@@ -74,21 +127,20 @@ The rewrite stays in the agent; it is never shelled out to a Python script that 
 - **Template strategy**: cold-pitch is currently 2-question discovery-led. Free-work-offer pattern (lead with concrete value, low-friction CTA) is queued as a register variant.
 - **Reference-example selection**: the humanizer takes one reference example per register. Choosing the best single example per register, and whether to vary it per recipient, is open.
 
-## Roadmap
+## Status
 
-- **Phase 1** (✅ shipped 2026-05-14, commit `451f38a`): Repo scaffold + `/draft-outreach` migrated to config-driven.
-- **Phase 2 + 2.5** (✅ shipped 2026-05-14, commits `ad477f2` + `7aa85d5`): Migrated remaining 6 skills (`humanizer`, `research-prospect`, `find-leads`, `send-outreach`, `find-funded-founders`, `competitor-customers`). Retired legacy `/draft-cold-touch`. Retired API-billed `voice_translate.py`.
-- **Phase 3** (✅ shipped 2026-05-14, commit `c23c29d`): Orchestrator. `/dispatch-outreach` skill + `orchestrator/state_machine.py` + `orchestrator/locks.py`. State machine advances prospects through `queued → researched → drafted → ready → sent` via fresh-context Agent-tool subagents.
-- **Phase 4** (✅ shipped 2026-05-14, commit `f38deba`): Hardening + auto-enrollment bridge. `find_person_note()` re-locator; explicit Phase 5 BLOCKED writeback; auto stale-lock cleanup at every dispatch; `orchestrator/enrollment.py` + `--enroll` flag on the 3 discovery skills (default OFF for one release).
-- **Phase 5** (✅ shipped 2026-05-15, commits `7dcf5f1` + `f7f50b1` + `2b72000` + `75703f2`): OSS-readiness. Consolidated 6 voice + email scripts from the original author's private repo into `voice/` + `orchestrator/`. Added Tier 1 (MX-check) email verification via `verify_email.py` so OSS users don't need a Reoon API key by default. `scripts/doctor.py` preflight covers required + per-feature optional checks. Documentation (README + INSTALL + `docs/OPTIONAL-FEATURES.md`) walks a fresh user from clone to first-run.
-- **Phase 5.5** (🚧 in progress, Week 1 shipped 2026-05-15): Robustness layer to land before public OSS release. Replaces the existing name-only dedup in `enrollment.py` / `state_machine.find_person_note` with a multi-key identity graph (LinkedIn slug + email + GitHub + Twitter, strict-policy matching with single-class-email ambiguity escalation). Followed by an append-only outreach ledger at `~/.outreach-factory/ledger/events.jsonl`, two-phase commit on every Gmail/LinkedIn send (intent → confirm with `X-Outreach-Intent-Id` header for crash recovery), bidirectional reconciliation against the Gmail API, declarative cooldown rules, and a full test harness. **Week 1a** (identity layer + 105 tests) is in tree. **Week 1b** (identity-aware refactor of `enrollment.py` and `state_machine.find_person_note`, `backfill_identity.py` one-time migration with Union-Find conflict clustering + surgical frontmatter insertion, 55 new tests; dry-run validated against Yang's 56-note vault: 0 identity-graph conflicts surfaced, 2 closed-cohort notes drop to `-tmp` IDs as expected) is in tree. Week 2 (ledger primitive + two-phase commit) is the next slice. Once 5.5 lands, "have we sent to this person already?" is a hard pre-send gate that never fails open.
+Shipped and public. The skills pipeline, the four framework jobs, and the
+guardrails described above are all in tree. The identity graph, the append-only
+ledger with two-phase-commit sends, the declarative cooldown/policy rules, and
+Gmail reconciliation all landed. For the change history see
+[CHANGELOG.md](../CHANGELOG.md); for the decision records see [docs/adr/](adr/).
 
 ### Parking lot
 
 - **Headless dispatcher** (`orchestrator/dispatcher.py`): subprocess `claude -p`
   for overnight runs with `ANTHROPIC_API_KEY` unset (per BILLING.md). Real
   bottleneck is human review at `drafted → ready`, not "wishing I could run
-  this overnight" — parked.
+  this overnight" - parked.
 - **Flip `--enroll` defaults from OFF→ON**: once a first weekly run with
   `--enroll` lands cleanly, flip the default in the 3 discovery skill bodies.
 - **`/init-outreach-factory` skill**: interactive bootstrap that walks

@@ -50,22 +50,24 @@ cp config-template/unsubscribe-patterns.example.yml \
 # 8. Restart Claude Code so it picks up the new skills.
 ```
 
-## MCP servers (required)
+## MCP servers (optional: discovery + the LinkedIn channel)
 
-The factory talks to your CRM, LinkedIn, and the web through three MCP servers
-that run alongside Claude Code. **The factory will silently fail on first skill
-invocation without them.** Install all three:
+These three MCP servers power **discovery** (finding prospects) and the
+**LinkedIn channel**. They are NOT needed for onboarding or the core email
+loop: `outreach-factory config | init | status` and the draft + Gmail-send path
+run on your config, Gmail, and the markdown vault alone. Add an MCP when you
+want the feature it unlocks; a missing one is a `doctor` WARN, not a failure.
 
-| MCP | Package | Used by | Auth |
+| MCP | Package | Unlocks | Auth |
 |---|---|---|---|
-| `obsidian` | [mcp-obsidian](https://pypi.org/project/mcp-obsidian/) | All skills (CRM read/write) | Obsidian's [Local REST API plugin](obsidian://show-plugin?id=obsidian-local-rest-api) — install in your vault, copy the API key the plugin shows |
-| `linkedin` | [linkedin-scraper-mcp](https://pypi.org/project/linkedin-scraper-mcp/) | `/find-leads`, `/find-funded-founders`, `/competitor-customers`, `/research-prospect`, `/send-outreach` | Logged-in LinkedIn cookies — set up inside the MCP itself |
+| `obsidian` | [mcp-obsidian](https://pypi.org/project/mcp-obsidian/) | Vault search/patch in the discovery + `/send-outreach` skills (the skills also edit the vault's `.md` files directly) | Obsidian's [Local REST API plugin](obsidian://show-plugin?id=obsidian-local-rest-api) - install in your vault, copy the API key the plugin shows |
+| `linkedin` | [linkedin-scraper-mcp](https://pypi.org/project/linkedin-scraper-mcp/) | `/find-leads`, `/find-funded-founders`, `/competitor-customers`, `/research-prospect`, `/send-outreach` | Logged-in LinkedIn cookies - set up inside the MCP itself |
 | `ScraplingServer` | [scrapling](https://pypi.org/project/scrapling/) | `/research-prospect` (Twitter / blog / web scraping) | None for the server; Twitter cookies if you want past-bio post content (see [docs/OPTIONAL-FEATURES.md](docs/OPTIONAL-FEATURES.md)) |
 
 ### Configure them
 
 MCP servers live in `~/.claude.json` under the top-level `mcpServers` key
-(user-scoped — available to every Claude Code session) or in a project-local
+(user-scoped - available to every Claude Code session) or in a project-local
 `.mcp.json` (limited to one project). For factory use, prefer user scope.
 
 A minimal `~/.claude.json` `mcpServers` block looks like:
@@ -96,7 +98,7 @@ A minimal `~/.claude.json` `mcpServers` block looks like:
 }
 ```
 
-You can also add servers via CLI (`claude mcp add ...`) — see `claude mcp
+You can also add servers via CLI (`claude mcp add ...`) - see `claude mcp
 --help`.
 
 ### Verify
@@ -107,7 +109,7 @@ claude mcp list
 ```
 
 The factory's preflight (`scripts/doctor.py`) parses `~/.claude.json` to
-verify the MCPs are *configured*, but it can't probe live MCP servers — they
+verify the MCPs are *configured*, but it can't probe live MCP servers - they
 are session-scoped to a Claude Code session. Reachability is tested
 implicitly when a skill first invokes a server.
 
@@ -138,7 +140,7 @@ python3 scripts/doctor.py
 # /send-outreach   /dispatch-outreach   /find-funded-founders   /competitor-customers
 ```
 
-If `doctor.py` reports any required failures, fix those first — the factory
+If `doctor.py` reports any required failures, fix those first - the factory
 will not work until they pass.
 
 ## Apply pending migrations
@@ -169,9 +171,9 @@ Replace `~/your-vault` with the path you set as `vault.path` in
 `~/.outreach-factory/config.yml`. The dry-run prints one line per pending
 migration with the affected count; `ledger/0002` will report 0 because of the
 documented cross-category dependency on `vault/0002` (see [docs/adr/0013-replay-exit-criterion-vehicle.md](docs/adr/0013-replay-exit-criterion-vehicle.md)
-§D24-N) — the real `apply()` produces the correct counts.
+§D24-N) - the real `apply()` produces the correct counts.
 
-Re-run `python3 scripts/doctor.py` after applying — the migrations check should
+Re-run `python3 scripts/doctor.py` after applying - the migrations check should
 now report `✓ no pending migrations`.
 
 ### If apply fails mid-batch
@@ -181,7 +183,7 @@ crashes mid-batch is NOT marked applied, and re-running `r.apply()` resumes
 from where it failed. Per-file atomicity (tmp-then-rename) guarantees no
 half-written Person notes or policy files. The safe recovery is to fix the
 underlying cause (whatever the exception said) and re-run `r.apply()`. Do
-NOT manually edit `~/.outreach-factory/migrations.state.json` — the
+NOT manually edit `~/.outreach-factory/migrations.state.json` - the
 idempotence checks in each migration handle the resume cleanly.
 
 For the conflict case specifically (`IdentityBackfillConflictError` from
@@ -192,7 +194,7 @@ the files + shared keys), then re-run `r.apply()`.
 ### Strict mode (opt-in)
 
 Set `OUTREACH_FACTORY_STRICT_MIGRATIONS=1` in your environment to promote
-pending migrations from WARN to FAIL — doctor's exit code becomes 1 when
+pending migrations from WARN to FAIL - doctor's exit code becomes 1 when
 anything is pending. Pillar I will flip this as the default; the env var
 opts in early. See [docs/adr/0013-replay-exit-criterion-vehicle.md](docs/adr/0013-replay-exit-criterion-vehicle.md)
 §D26 for the rationale.

@@ -2,8 +2,8 @@
 name: send-outreach
 version: 1.0.0
 description: |
-  Send queued cold-touch outreach in batch — emails via Gmail API + LinkedIn
-  connection requests via the LinkedIn MCP — and writeback to the Obsidian vault
+  Send queued cold-touch outreach in batch - emails via Gmail API + LinkedIn
+  connection requests via the LinkedIn MCP - and writeback to the Obsidian vault
   (flip `sent: true`, tick outcome checkboxes, update Person status to `contacted`).
   Use when the user wants to ship the touch drafts that the `/draft-outreach`
   skill has prepared. Step 5 in the outreach pipeline (after find → research → draft → humanize).
@@ -22,13 +22,13 @@ allowed-tools:
   - mcp__obsidian__obsidian_patch_content
 ---
 
-# /send-outreach — Ship queued touches (email + LinkedIn) with vault writeback
+# /send-outreach - Ship queued touches (email + LinkedIn) with vault writeback
 
 You are the send-step of the outreach pipeline. Your job: take touch drafts that already exist in the Obsidian vault, send them, and update vault state. The Python core handles email + reconciliation; you handle LinkedIn in-session via the MCP because MCPs aren't callable from standalone Python.
 
 ---
 
-## ⚙️ Pre-flight — load user config
+## ⚙️ Pre-flight - load user config
 
 **Before doing anything else, read the user's config:**
 
@@ -64,7 +64,7 @@ CLI shortcuts (the symlinked skill resolves to the outreach-factory repo):
 
 ### Gmail OAuth setup
 
-The skill sends from whatever Gmail account you authenticate. **Pick one and stick with it** —
+The skill sends from whatever Gmail account you authenticate. **Pick one and stick with it** -
 re-auth from a different inbox means re-doing the OAuth flow.
 
 **Setup steps:**
@@ -75,16 +75,16 @@ re-auth from a different inbox means re-doing the OAuth flow.
 4. Configure OAuth consent screen (External, add your sender email as test user)
 5. Create OAuth client ID → Desktop app → download JSON
 6. Save the JSON to the path in `email_send.gmail_credentials_path` (default: `~/.outreach-factory/credentials/gmail_credentials.json`)
-7. Run `python ~/.claude/skills/send-outreach/scripts/run.py auth` — opens browser consent. Refresh token is written to `email_send.gmail_token_path`.
+7. Run `python ~/.claude/skills/send-outreach/scripts/run.py auth` - opens browser consent. Refresh token is written to `email_send.gmail_token_path`.
 
 If you see "blocked by your administrator" on a Google Workspace account, that route is gated; fall back to a personal Gmail or use SMTP with an app password (not currently supported, file an issue).
 
 ### Sender identity considerations (informational)
 
 Choice of sending address affects deliverability + trust:
-- **University / corporate** — best deliverability for cold opens, BUT many institutions' AUPs prohibit "commercial purposes" / "personal financial gain" / "solicitations." Enforcement is complaint-driven and rare for 1:1 personalized outreach, but the risk is account loss if a recipient reports.
-- **Personal `@gmail.com`** — fully compliant, slight loss of trust premium.
-- **Custom domain** — most defensible long-term, requires warmup (2-3 weeks via Smartlead/Instantly).
+- **University / corporate** - best deliverability for cold opens, BUT many institutions' AUPs prohibit "commercial purposes" / "personal financial gain" / "solicitations." Enforcement is complaint-driven and rare for 1:1 personalized outreach, but the risk is account loss if a recipient reports.
+- **Personal `@gmail.com`** - fully compliant, slight loss of trust premium.
+- **Custom domain** - most defensible long-term, requires warmup (2-3 weeks via Smartlead/Instantly).
 
 ---
 
@@ -123,10 +123,10 @@ python ~/.claude/skills/send-outreach/scripts/run.py send --dry-run
 ```
 
 This prints a categorized table:
-- **EMAILS READY** — touches with valid recipient + parseable subject/body
-- **LINKEDIN-ONLY READY** — touches with no email but LinkedIn URL
-- **SKIPPED: no email** — touches whose person note has no email (often `status: closed`)
-- **SKIPPED: unparseable** — touches with structural issues; list `issues` per row
+- **EMAILS READY** - touches with valid recipient + parseable subject/body
+- **LINKEDIN-ONLY READY** - touches with no email but LinkedIn URL
+- **SKIPPED: no email** - touches whose person note has no email (often `status: closed`)
+- **SKIPPED: unparseable** - touches with structural issues; list `issues` per row
 
 Walk the list with the user. Common questions:
 - "Are the `# guess-unverified` emails okay to send?" → Yes; ~70% land for `first@domain` at <50-person companies. Bounces are expected and informative.
@@ -183,7 +183,7 @@ For each entry where `current_li_state == "not_invited"`:
 
    The policy engine's `linkedin-weekly-invite-cap` rule (in `cooldowns.yml`)
    reads these events to enforce the 100/week soft limit. **If you skip step 4,
-   the cap under-reports and silently allows over-quota sends** — exactly the
+   the cap under-reports and silently allows over-quota sends** - exactly the
    failure mode the rule exists to prevent. There is no programmatic
    enforcement of this step until Pillar C wires the two-phase events; until
    then, the discipline is on you. Treat step 4 as inseparable from step 1:
@@ -203,7 +203,7 @@ successful invites, not attempts). Move on.
 When the user runs `/send-outreach --li-check`:
 
 1. Scan vault for touches where `linkedin_state: invited` (use `mcp__obsidian__obsidian_complex_search` or grep)
-2. For each, check acceptance — use whichever MCP path is cheapest:
+2. For each, check acceptance - use whichever MCP path is cheapest:
    - `mcp__linkedin__get_inbox` + check if a conversation exists with this person (they accepted = inbox conversation auto-created)
    - OR `mcp__linkedin__get_person_profile` and check connection degree (1st-degree = accepted)
 3. For accepted contacts: send the queued DM via `mcp__linkedin__send_message`
@@ -244,11 +244,11 @@ If the contract drifts (`/draft-outreach` updated), update the parsers in `scrip
 
 ## Anti-patterns
 
-- ❌ **Don't auto-send without preview** — always run `--dry-run` first OR look at the preview table before confirming `y`. Unverified emails bounce and damage sender reputation.
-- ❌ **Don't add a custom note on LinkedIn invites under free tier** — you only get 5 personalized invites per month; the script + this skill assume no-note invites.
-- ❌ **Don't re-send to someone whose touch is already `sent: true`** — the parser filters them out, but if reconcile didn't run first you might accidentally double-send. Always reconcile on first use.
-- ❌ **Don't change `sent_at` on a touch you didn't send** — it's the audit trail.
-- ❌ **Don't bulk-send more than ~30 emails in one run** — Gmail throttles, and conversion is what matters not throughput. Personalization-led volume is the wedge.
+- ❌ **Don't auto-send without preview** - always run `--dry-run` first OR look at the preview table before confirming `y`. Unverified emails bounce and damage sender reputation.
+- ❌ **Don't add a custom note on LinkedIn invites under free tier** - you only get 5 personalized invites per month; the script + this skill assume no-note invites.
+- ❌ **Don't re-send to someone whose touch is already `sent: true`** - the parser filters them out, but if reconcile didn't run first you might accidentally double-send. Always reconcile on first use.
+- ❌ **Don't change `sent_at` on a touch you didn't send** - it's the audit trail.
+- ❌ **Don't bulk-send more than ~30 emails in one run** - Gmail throttles, and conversion is what matters not throughput. Personalization-led volume is the wedge.
 
 ---
 
@@ -279,7 +279,7 @@ The LinkedIn `linkedin-weekly-invite-cap` policy rule (Pillar A, ADR-0008)
 enforces the 100/week soft cap that LinkedIn uses to throttle / suspend
 personal accounts. The rule reads `cost_incurred` events from the ledger;
 if those events are missing, the cap under-reports and silently allows
-over-quota sends — losing the LinkedIn channel for the whole pipeline.
+over-quota sends - losing the LinkedIn channel for the whole pipeline.
 
 Until Pillar C lands `li_invite_intent` / `li_invite_confirmed` two-phase
 events, the emit is operator-mediated (you, Claude). Phase 2 step 4 above
@@ -288,9 +288,9 @@ cap.md` for the full transitional contract.
 
 ## See also
 
-- `/draft-outreach` — upstream: drafts the touch notes this skill ships
-- `/research-prospect` — upstream: produces the dossier `/draft-outreach` consumes
-- `/humanizer` — sibling: standalone AI-tell detector
-- `docs/ARCHITECTURE.md` (in outreach-factory repo) — factory pipeline + state machine
-- `docs/BILLING.md` (in outreach-factory repo) — subscription vs API billing matrix
-- `docs/adr/0008-linkedin-weekly-invite-cap.md` — Pillar A policy rule + transitional emit contract
+- `/draft-outreach` - upstream: drafts the touch notes this skill ships
+- `/research-prospect` - upstream: produces the dossier `/draft-outreach` consumes
+- `/humanizer` - sibling: standalone AI-tell detector
+- `docs/ARCHITECTURE.md` (in outreach-factory repo) - factory pipeline + state machine
+- `docs/BILLING.md` (in outreach-factory repo) - subscription vs API billing matrix
+- `docs/adr/0008-linkedin-weekly-invite-cap.md` - Pillar A policy rule + transitional emit contract
