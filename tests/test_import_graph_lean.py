@@ -17,6 +17,7 @@ See ``.planning/PLAN-sever-and-partition.md`` (W0).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,11 +58,20 @@ def test_core_send_path_import_is_lean():
         "if m == b or m.startswith(b + '.')})\n"
         "print('LEANRESULT:' + json.dumps(leaked))\n"
     )
+    # The send path's config module loads ~/.outreach-factory/config.yml at
+    # import time (config.py sys.exit(2) if absent). This probe only needs
+    # send_queued to IMPORT so it can inspect sys.modules, so point it at the
+    # committed template via OUTREACH_FACTORY_CONFIG. Without this the test is
+    # non-hermetic: it passes only on a machine that already has a user config
+    # and fails on a fresh clone / in CI (where there is no ~/.outreach-factory).
+    env = dict(os.environ)
+    env["OUTREACH_FACTORY_CONFIG"] = str(REPO_ROOT / "config-template" / "config.example.yml")
     proc = subprocess.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
+        env=env,
     )
     assert proc.returncode == 0, (
         "probe failed to import the core send path:\n"
