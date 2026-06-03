@@ -134,6 +134,7 @@ If the config file does not exist, create it from the templates (this is the CLI
 
 That copies `config-template/config.example.yml` -> `~/.outreach-factory/config.yml` and `config-template/.env.example` -> `~/.outreach-factory/.env`, leaving any existing file untouched. Then **converse** to fill it. Ask for, and write into `config.yml`:
 
+- `factory.home`: the absolute path where they cloned this repo (run `pwd` from the repo root to get it). The template default `~/code/outreach-factory` is only a guess, and doctor BLOCKS on `factory.home` until it points at the real clone (the skills read their reference files from it). Set this first; you can detect it yourself since you are running inside the repo.
 - `company.name`, `company.one_liner`, and the three wedge flavors (`wedge_plain` / `wedge_analogy` / `wedge_failure_mode`). The operator usually has one of these in their head; offer to draft the other two from it.
 - `founder.name`, `founder.short_name`, `founder.email` (this IS the sending address, so it drives the whole deliverability phase), `founder.footer_email`.
 - The wedge / ICP: `icp.buyer_description` at minimum (a sentence on who the buyer is). Pointers like `icp.tier_playbook_path` are optional.
