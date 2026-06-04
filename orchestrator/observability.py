@@ -205,6 +205,22 @@ EVENT_CLASS_CATALOG: frozenset[str] = frozenset({
     "audit_log_exported",
     "identity_keys_modified",
     "credentials_reencrypted",
+    # ---------- Content distribution — the broadcast surface (ADR-0082 D408;
+    # mirrors orchestrator.content.CONTENT_NEW_EVENT_CLASSES per the per-pillar
+    # mirror constants parity discipline per ADR-0050 D272). The content
+    # lifecycle markers + the per-channel two-phase distribution family +
+    # engagement ingest. The pipeline-marker events carry channel: null until a
+    # per-channel variant exists; the distribution_* family carries channel in
+    # the post-channel set {linkedin_post, x_post, x_thread, blog, newsletter,
+    # reddit, hn, discord} per ADR-0014 D33.
+    "content_drafted",
+    "content_humanized",
+    "content_review_approved",
+    "content_review_rejected",
+    "distribution_intent",
+    "distribution_confirmed",
+    "distribution_failed",
+    "engagement_observed",
 })
 
 

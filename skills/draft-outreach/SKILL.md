@@ -212,6 +212,8 @@ The whole point is a CLEAN context: the humanizer must rewrite the draft without
 - Spawn a fresh-context subagent (an Agent-tool task) whose entire job is to humanize the one draft you hand it, OR
 - Invoke the `/humanizer` skill on the assembled draft.
 
+When you spawn the subagent, run it on the configured cheap model: pass `model: {config.models.humanizer}` (default `haiku`) on the Agent call. The de-AI rewrite is a focused, mechanical pass and does not need a frontier model (the cost posture lives in the `models:` config block; bump to `sonnet` if a pass reads thin).
+
 **Step 2 - give the humanizer exactly two inputs:**
 1. **(a) The assembled draft** from Phase 3.5 (verbatim).
 2. **(b) ONE reference example** of a good, human-written touch in this register. Pull it from `{voice.reference_example_path}` (defaults to `skills/draft-outreach/reference-examples.md`); select the single example whose label matches the current register (cold-pitch / congrats / re-engagement / reply / public-comment). If the user has their own curated example for this register, prefer that one.

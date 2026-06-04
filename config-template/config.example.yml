@@ -221,3 +221,87 @@ followup:
     - after_business_days: 5   # touch 3: a brief breakup ("should I close the loop?")
   stop_on: [reply, unsubscribe, bounce]   # any of these after the last touch cancels
   auto_send: false        # keep the human review gate (drafted -> ready stays manual)
+
+# ============================================================
+# Content distribution - the broadcast surface ("Claude as CMO")
+# ============================================================
+# The cold-email engine above is 1:1 outbound. This is the 1:many BROADCAST
+# surface on the same gated spine: take your own work (a shipped feature in a
+# codebase, a new or high-ranked research paper, a notes file), draft ONE
+# canonical piece, and project it per channel (LinkedIn long, X short, blog is
+# the canonical). The scheduler (orchestrator/content_scheduler.py) reads the
+# ledger and decides which approved, scheduled posts are due now. It is
+# deterministic and read-only: it never posts and never bypasses a gate.
+#
+# The pipeline: configurable source -> one canonical source-of-truth piece ->
+# register-aware per-channel projections -> your review -> scheduled -> posted.
+# "Autonomous" means drafts appear without you pointing at a commit; it does NOT
+# mean they publish themselves. auto_publish is off; you review every piece.
+#
+#   outreach-factory content draft --source <id>   # draft from a configured source
+#   python orchestrator/content_scheduler.py --json     # the due-now worklist
+#   python orchestrator/content_scheduler.py --report   # what is working
+#
+# Off by default. The `sources` list is the surface you tune: each block is one
+# source with its own salience knob (which commits / which papers are worth a
+# post). Add a block to outreach from a new stream.
+content:
+  enabled: false          # opt-in; off by default
+  auto_publish: false     # keep the review gate (review -> scheduled stays manual)
+
+  # The typed source registry: "config what to outreach, easily." Each source is
+  # one declarative block; the salience/filter inside it is the knob.
+  sources:
+    # A codebase source: as you ship a feature, an announcement drafts itself.
+    # The `shipped_feature` salience keeps only announce-worthy commits (release
+    # tags + conventional `feat:` commits); chore/docs/test/refactor are dropped.
+    # - id: sf-feature-ships
+    #   type: codebase
+    #   repo: ../scholarfeed       # path to the repo to watch (a DIFFERENT repo)
+    #   salience: shipped_feature
+    #   since: last_post           # commit-range anchor (a git ref, or last_post)
+    #   registers: [linkedin_post, x_thread, blog]
+
+    # A paper-feed source: new / high-ranked papers via the ScholarFeed MCP. The
+    # "salience" is just a filter the MCP already exposes (rank / age / topics).
+    # - id: sf-top-papers
+    #   type: paper_feed
+    #   provider: scholarfeed_mcp
+    #   filter:
+    #     min_rank: 0.85           # high-ranked papers only ("I can set" this)
+    #     max_age_days: 7          # new papers only
+    #     topics: [agents, retrieval]
+    #   registers: [x_post, linkedin_post]
+
+  # Per-channel posting. The policy engine owns the HARD cap + quiet hours; this
+  # is the scheduler's matching view (so the due-list reflects reality). LinkedIn
+  # + X auto-publish (you own the clients); blog + newsletter are owned + safe;
+  # communities are draft_only and structurally never auto-posted in v1.
+  channels:
+    linkedin_post: { enabled: false, daily_cap: 1 }
+    x_post:        { enabled: false, daily_cap: 3 }
+    x_thread:      { enabled: false, daily_cap: 1 }
+    blog:          { enabled: false, daily_cap: 1 }
+    newsletter:    { enabled: false, daily_cap: 1 }
+    reddit:        { enabled: false, daily_cap: 1, mode: draft_only }
+    hn:            { enabled: false, daily_cap: 1, mode: draft_only }
+    discord:       { enabled: false, daily_cap: 2, mode: draft_only }
+
+# ============================================================
+# Model tiering - the cost posture for the agent-driven skills
+# ============================================================
+# The drafting + distribution skills spawn fresh-context subagents (the per-spoke
+# humanizer rewrite, per-prospect / per-post workers). Each subagent can run on a
+# cheaper model than the orchestrating session, so the frontier model is not
+# paying for mechanical work. The default posture: Sonnet for drafting + dispatch
+# (the workhorse), Haiku for the humanizer (a focused de-AI rewrite does not need
+# a frontier model). Tune per your budget; bump `humanizer` to sonnet if a pass
+# ever reads thin.
+#
+# The orchestrating SESSION model is set by `/model`, NOT here. The single biggest
+# cost lever is running the session itself on Sonnet rather than Opus; do that for
+# routine outreach + content work and keep Opus for architecture.
+models:
+  draft: sonnet          # generation / assembly subagents
+  humanizer: haiku       # the per-spoke de-AI rewrite (mechanical, focused)
+  dispatch: sonnet       # per-prospect / per-post dispatch workers
