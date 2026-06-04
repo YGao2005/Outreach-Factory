@@ -5,7 +5,7 @@ google-api-python-client==2.150.0
 # Match orchestrator/requirements.txt's spec exactly so installing both files
 # never trips pip's resolver: the old exact pin here vs the core's range forced
 # a downgrade and printed a dependency-conflict warning.
-pyyaml>=6.0
+pyyaml>=6.0.3
 
 # OpenTelemetry is NO LONGER a core send dependency. The send path uses the
 # no-op span shim orchestrator/obs.py by default, so a cold send needs neither
