@@ -43,4 +43,4 @@ aiohttp>=3.14.0,<4
 # cryptography floor is 44.0.1 (not just >=42): it clears the OSV advisories
 # fixed across 42.0.x-44.0.1, incl. the bundled-OpenSSL CVE-2024-12797.
 cryptography>=44.0.1
-argon2-cffi>=23
+argon2-cffi>=25.1.0
