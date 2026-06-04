@@ -14,6 +14,8 @@ from orchestrator import content as c
 from orchestrator import content_scheduler as cs
 from orchestrator import ledger as L
 from orchestrator import post_dispatch as pd
+from orchestrator.policy import content_rules as cr
+from orchestrator.policy.types import Allow, Block
 
 
 NOW = datetime(2026, 6, 4, 17, 0, 0, tzinfo=timezone.utc)
@@ -165,3 +167,83 @@ class TestConfirmManualPost:
         # and it drops out of the due list
         due = cs.compute_due_posts(led.all_events(), _cal(), now=NOW)
         assert not any(a.content_id == "cpc_1" and a.channel == "linkedin_post" for a in due)
+
+
+# ---------------------------------------------------------------------------
+# Content-post guardrails (ADR-0082 D417)
+# ---------------------------------------------------------------------------
+
+
+def _ctx(channel, body_hash="sha256:b", events=(), now=NOW):
+    return cr.ContentRuleContext(content_id="cpc_1", channel=channel,
+                                 body_hash=body_hash, register="post",
+                                 now=now, events=tuple(events))
+
+
+def _confirmed(channel, body_hash, ts="2026-06-04T11:00:00Z"):
+    return {"type": "distribution_confirmed", "channel": channel,
+            "body_hash": body_hash, "ts": ts}
+
+
+class TestContentRules:
+    def test_cap_blocks_at_cap_allows_under(self):
+        rule = cr.PerChannelPostingCapRule({"x_post": 2})
+        assert isinstance(rule.evaluate(_ctx("x_post", events=[
+            _confirmed("x_post", "a")])), Allow)
+        assert isinstance(rule.evaluate(_ctx("x_post", events=[
+            _confirmed("x_post", "a"), _confirmed("x_post", "b")])), Block)
+
+    def test_cap_ignores_other_channel_and_old(self):
+        rule = cr.PerChannelPostingCapRule({"x_post": 1})
+        # other channel + a post outside the 24h window don't count
+        assert isinstance(rule.evaluate(_ctx("x_post", events=[
+            _confirmed("linkedin_post", "a"),
+            _confirmed("x_post", "b", ts="2026-06-01T00:00:00Z")])), Allow)
+
+    def test_cap_unknown_channel_allows(self):
+        assert isinstance(cr.PerChannelPostingCapRule({}).evaluate(_ctx("x_post")), Allow)
+
+    def test_no_double_post(self):
+        rule = cr.NoDoublePostRule()
+        # same body already on this channel -> block
+        assert isinstance(rule.evaluate(_ctx("x_post", body_hash="sha256:dup", events=[
+            _confirmed("x_post", "sha256:dup")])), Block)
+        # same body on a DIFFERENT channel -> allow (each channel is its own)
+        assert isinstance(rule.evaluate(_ctx("x_post", body_hash="sha256:dup", events=[
+            _confirmed("linkedin_post", "sha256:dup")])), Allow)
+
+    def test_promo_weekly_ceiling(self):
+        rule = cr.PromotionalRatioRule({"reddit": 1})
+        assert isinstance(rule.evaluate(_ctx("reddit", events=[
+            _confirmed("reddit", "a", ts="2026-06-03T00:00:00Z")])), Block)
+
+    def test_load_content_rules_communities_strict(self):
+        cal = cs.calendar_config_from_dict({"enabled": True, "channels": {
+            "x_post": {"enabled": True, "daily_cap": 3},
+            "reddit": {"enabled": True, "daily_cap": 1}}})
+        rules = cr.load_content_rules(cal)
+        promo = [r for r in rules if isinstance(r, cr.PromotionalRatioRule)][0]
+        assert promo.weekly_caps["reddit"] == 1
+        assert promo.weekly_caps["x_post"] == 15
+
+
+class TestGuardrailsInDispatcher:
+    def test_gate_blocks_a_cross_piece_duplicate(self, led):
+        # cpc_2 is approved + due on x_post; a DIFFERENT piece (cpc_1) already
+        # posted the same body to x_post. The scheduler can't see this (it dedups
+        # by content_id, not body); the no-double-post GATE catches it.
+        bh = c.variant_body_hash("x_post", "identical body text")
+        led.append({**c.build_distribution_confirmed_payload(
+            content_id="cpc_1", channel="x_post", intent_id="cont_a",
+            post_id="p1", body_hash=bh), "type": "distribution_confirmed",
+            "ts": "2026-06-04T08:00:00.000Z"})
+        _seed_approved(led, "cpc_2", "x_post", body_hash=bh)
+        cal = _cal()
+        gate = cr.content_gate(cr.load_content_rules(cal))
+        out = pd.dispatch_due_posts(
+            led, cal, now=NOW,
+            resolve_body=_bodies(**{"cpc_2|x_post": "identical body text"}), gate=gate)
+        assert out.reminders == []
+        assert out.blocked[0]["rule"] == "content.no-double-post"
+        assert any(e.get("type") == "policy_blocked" and e.get("channel") == "x_post"
+                   for e in led.all_events())
