@@ -181,7 +181,15 @@ def dispatch_due_posts(
                 outcome.blocked.append(block)
                 continue
 
-        auto = bool(calendar.auto_publish) and bool(client.can_post(action.channel))
+        # Communities NEVER auto-post (ADR-0082 D411(2)/D414), structurally: even
+        # a future client that claims it can post a community + auto_publish on
+        # still routes to draft-and-remind. requires_manual_post is set by the
+        # scheduler for community channels.
+        auto = (
+            bool(calendar.auto_publish)
+            and not action.requires_manual_post
+            and bool(client.can_post(action.channel))
+        )
         if not auto:
             # Draft-and-manual: NO intent written (no orphan-by-design). The post
             # enters the ledger only when the operator confirms it.

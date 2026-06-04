@@ -140,6 +140,18 @@ class TestAutoPublishPath:
         e = led.query_by_post_id("post_x_post", channel="x_post")
         assert e is not None and e["body_hash"] == "sha256:xx"
 
+    def test_community_never_auto_posts_even_with_a_capable_client(self, led):
+        # Structural guarantee (ADR-0082 D411(2)/D414): even auto_publish on + a
+        # client that claims it can post reddit -> still a draft-and-remind.
+        _seed_approved(led, "cpc_1", "reddit")
+        client = FakeClient(postable={"reddit"})
+        out = pd.dispatch_due_posts(
+            led, _cal(auto_publish=True), now=NOW,
+            resolve_body=_bodies(**{"cpc_1|reddit": "body"}), posting_client=client)
+        assert out.auto_posted == []
+        assert len(out.reminders) == 1 and out.reminders[0].requires_manual_post is True
+        assert client.posted == []  # the client was never asked to post
+
     def test_client_failure_writes_distribution_failed(self, led):
         _seed_approved(led, "cpc_1", "x_post")
         out = pd.dispatch_due_posts(

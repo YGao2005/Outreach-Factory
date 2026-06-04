@@ -148,3 +148,83 @@ class TestGoldenPathContentDistribution:
         cs.compute_due_posts_from_ledger(tmp_ledger, _enabled_calendar(), now=golden_now)
         cs.build_content_report(tmp_ledger.all_events(), now=golden_now)
         assert len(tmp_ledger.all_events()) == before
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 binding criterion (ADR-0082 D413-D417): the draft-and-manual loop
+# ---------------------------------------------------------------------------
+
+from orchestrator import post_dispatch as pd  # noqa: E402
+from orchestrator import content_reconcile as crx  # noqa: E402
+from orchestrator.policy import content_rules as cr  # noqa: E402
+
+
+class TestGoldenPathContentPhase2:
+    """The full draft-and-manual broadcast loop, end to end against the real
+    dispatcher + guardrails + reconcile + report. Pins ADR-0082 D413-D417:
+    no auto-post (human-gated), the guardrail blocks a duplicate, the manual
+    confirm posts, engagement flows into the report, communities never auto-post.
+    """
+
+    def _approve(self, led, cid, channel, sched, *, body_hash):
+        led.append({**c.build_content_drafted_payload(content_id=cid, source_ref="abc",
+                                                       topic="t"), "type": "content_drafted"})
+        led.append({**c.build_content_review_approved_payload(
+            content_id=cid, channel=channel, scheduled_at=sched, body_hash=body_hash,
+            register="post"), "type": "content_review_approved"})
+
+    def test_draft_and_manual_loop(self, tmp_ledger, golden_now):
+        cal = cs.calendar_config_from_dict({"enabled": True, "auto_publish": False,
+            "channels": {"linkedin_post": {"enabled": True, "daily_cap": 1},
+                         "reddit": {"enabled": True, "daily_cap": 1}}})
+        sched = _iso(golden_now - timedelta(hours=1))
+        li_body = "Shipped lineage tracking. Every prospect now carries its source."
+        li_hash = c.variant_body_hash("linkedin_post", li_body)
+        self._approve(tmp_ledger, "cpc_1", "linkedin_post", sched, body_hash=li_hash)
+        self._approve(tmp_ledger, "cpc_1", "reddit", sched,
+                      body_hash=c.variant_body_hash("reddit", "r/ML: we shipped lineage"))
+
+        gate = cr.content_gate(cr.load_content_rules(cal))
+        bodies = {("cpc_1", "linkedin_post"): li_body,
+                  ("cpc_1", "reddit"): "r/ML: we shipped lineage"}
+
+        # 1. Dispatch: draft-and-manual for BOTH channels, NO ledger writes, no auto-post.
+        before = len(tmp_ledger.all_events())
+        out = pd.dispatch_due_posts(tmp_ledger, cal, now=golden_now,
+                                    resolve_body=lambda cid, ch: bodies.get((cid, ch)),
+                                    gate=gate)
+        assert {r.channel for r in out.reminders} == {"linkedin_post", "reddit"}
+        assert out.auto_posted == []
+        # community reminder is flagged manual (structural never-auto-post)
+        assert any(r.channel == "reddit" and r.requires_manual_post for r in out.reminders)
+        assert len(tmp_ledger.all_events()) == before  # no orphan intents written
+
+        # 2. The operator posts the LinkedIn one and confirms it.
+        pd.confirm_manual_post(tmp_ledger, content_id="cpc_1", channel="linkedin_post",
+                               post_id="urn:li:7", body_hash=li_hash)
+        assert c.derived_content_stage(tmp_ledger.all_events(), "cpc_1") == "posted"
+        # it drops out of the due list
+        due = cs.compute_due_posts(tmp_ledger.all_events(), cal, now=golden_now)
+        assert not any(a.channel == "linkedin_post" for a in due)
+
+        # 3. The guardrail BLOCKS a different piece reusing the same body on the
+        #    same channel (the scheduler dedups by content_id, not body).
+        self._approve(tmp_ledger, "cpc_2", "linkedin_post",
+                      _iso(golden_now - timedelta(hours=1)), body_hash=li_hash)
+        cal2 = cs.calendar_config_from_dict({"enabled": True, "auto_publish": False,
+            "channels": {"linkedin_post": {"enabled": True, "daily_cap": 5}}})  # cap won't block
+        out2 = pd.dispatch_due_posts(tmp_ledger, cal2, now=golden_now,
+                                     resolve_body=lambda cid, ch: li_body,
+                                     gate=cr.content_gate(cr.load_content_rules(cal2)))
+        assert not any(r.content_id == "cpc_2" for r in out2.reminders)
+        assert any(b["rule"] == "content.no-double-post" for b in out2.blocked)
+        assert any(e.get("type") == "policy_blocked" for e in tmp_ledger.all_events())
+
+        # 4. Engagement ingest (delta) flows into the report.
+        crx.ingest_engagement(tmp_ledger, content_id="cpc_1", channel="linkedin_post",
+                              scraped_metrics={"likes": 30, "comments": 4},
+                              observed_at=_iso(golden_now))
+        report = cs.build_content_report(tmp_ledger.all_events(), now=golden_now)
+        assert report["engagement"]["signal"] == "present"
+        assert report["engagement"]["by_channel"]["linkedin_post"]["likes"] == 30
+        assert report["posts"]["by_channel"]["linkedin_post"] == 1

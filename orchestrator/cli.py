@@ -674,6 +674,86 @@ def _status_followup_lines(cfg, events, now) -> list[str] | None:
     return lines
 
 
+def _status_content_lines(cfg, events, now) -> list[str] | None:
+    """The CONTENT block (broadcast surface): pieces per stage, posts due now per
+    channel, posts published this week, and the top "what is working" line.
+    Returns None when there is no content config + no content activity (status
+    then skips the section so non-users see no clutter).
+
+    Reuses the already-loaded events. The due list comes from the SAME scheduler
+    the dispatch-content skill consults, so status and dispatch never disagree.
+    """
+    if not cfg:
+        return None
+    try:
+        from datetime import timedelta
+
+        from orchestrator import content as _content
+        from orchestrator import content_scheduler as _cs
+
+        calendar = _cs.calendar_config_from_dict(cfg.get("content"))
+    except Exception:
+        return None
+
+    content_event_types = {
+        "content_drafted", "content_humanized", "content_review_approved",
+        "content_review_rejected", "distribution_confirmed",
+    }
+    content_ids = {
+        e.get("content_id") for e in events
+        if e.get("type") in content_event_types and e.get("content_id")
+    }
+    if not calendar.enabled and not content_ids:
+        return None
+
+    by_stage: dict[str, int] = {}
+    for cid in content_ids:
+        st = _content.derived_content_stage(events, cid)
+        if st:
+            by_stage[st] = by_stage.get(st, 0) + 1
+
+    lines = ["\n  CONTENT  (broadcast surface; opt-in)"]
+    if not calendar.enabled:
+        lines.append("    distribution off (set content.enabled: true in config)")
+    if by_stage:
+        stage_detail = ", ".join(
+            f"{s}: {by_stage[s]}" for s in _content.CONTENT_STAGES if by_stage.get(s)
+        )
+        lines.append(f"    pieces          {stage_detail}")
+
+    due = _cs.compute_due_posts(events, calendar, now=now) if calendar.enabled else []
+    if due:
+        per_ch: dict[str, int] = {}
+        for a in due:
+            per_ch[a.channel] = per_ch.get(a.channel, 0) + 1
+        ch_detail = ", ".join(f"{ch}: {per_ch[ch]}" for ch in sorted(per_ch))
+        lines.append(f"    due now         {len(due)}   ({ch_detail})")
+    elif calendar.enabled:
+        lines.append("    due now         0")
+
+    week_ago = now - timedelta(days=7)
+    posted_7d = 0
+    for e in events:
+        if e.get("type") != "distribution_confirmed":
+            continue
+        ts = e.get("ts") or ""
+        # count if undated or within the window (string compare on the trailing-Z
+        # ISO shape matches the chronological compare used elsewhere).
+        if not ts or ts >= week_ago.strftime("%Y-%m-%dT%H:%M:%S.000Z"):
+            posted_7d += 1
+    if posted_7d:
+        lines.append(f"    posted (7d)     {posted_7d}")
+
+    report = _cs.build_content_report(events, now=now)
+    if report["engagement"]["signal"] == "present":
+        by_ch = report["engagement"]["by_channel"]
+        best = max(by_ch.items(), key=lambda kv: sum(kv[1].values()), default=None)
+        if best:
+            met = ", ".join(f"{k} {v}" for k, v in sorted(best[1].items()))
+            lines.append(f"    working         {best[0]} ({met})")
+    return lines
+
+
 def cmd_status(_args) -> int:
     """Print what the operator actually wants to know: what went out, who
     replied, what is queued, and whether it is safe to send more today.
@@ -785,6 +865,11 @@ def cmd_status(_args) -> int:
     followup_lines = _status_followup_lines(cfg, events, now)
     if followup_lines:
         for line in followup_lines:
+            print(line)
+
+    content_lines = _status_content_lines(cfg, events, now)
+    if content_lines:
+        for line in content_lines:
             print(line)
 
     print(f"\n  PIPELINE  (last 30 days, from the ledger)")
