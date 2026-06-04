@@ -110,6 +110,7 @@ _OPERATIONS_TEST_FILES = frozenset({
     "test_doctor_preflight_migrations.py",
     "test_content.py",
     "test_post_dispatch.py",
+    "test_content_reconcile.py",
 })
 
 
