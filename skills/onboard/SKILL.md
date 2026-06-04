@@ -320,9 +320,38 @@ If the operator wants to confirm the whole wiring WITHOUT a real OAuth round-tri
 ./bin/outreach-factory status
 ```
 
-Read it back to the operator in plain terms: how many emails went out today, the daily cap and remaining headroom, this week's warming ceiling (if warming is enabled), replies, bounces, blocked sends, and the pipeline counts. Frame it as: "You are cleared to send N/day this week, ramping to M over the next few weeks. Here is what is still optional (DKIM if you have not finished it, a warmup network, real prospect sourcing)."
+Read it back to the operator in plain terms: how many emails went out today, the daily cap and remaining headroom, this week's warming ceiling (if warming is enabled), replies, bounces, blocked sends, and the pipeline counts. Frame it as: "You are cleared to send N/day this week, ramping to M over the next few weeks. Here is what is still optional (DKIM if you have not finished it, a warmup network, real prospect sourcing, and follow-up sequences)."
+
+Surface follow-up sequences here as a CHOICE (see the optional section below). They are off by default; mention they exist so the operator can decide, but do not push them - a single-touch operator is a valid setup.
 
 Gate check: `status` shows the `init_wizard_completed` round-trip happened (a non-empty ledger with the test send). The operator has now proven the machine end to end.
+
+---
+
+## Optional: follow-up sequences (off by default)
+
+Not a phase, and not for everyone - surface it once the loop is proven, as a choice. Cold outreach is mostly follow-ups: a single touch captures maybe 1-3% reply; a short 3-touch cadence multiplies that. The factory can sequence a sent prospect who has not replied through touch 2, then touch 3, on a business-day schedule.
+
+It is **off by default** (`followup.enabled: false`); a fresh install never follows up until the operator turns it on. A single-touch setup is perfectly valid, so mention this as an option and let them decide - do not push it. Recommend enabling it only once the mailbox is warm.
+
+Explain it in plain terms:
+
+- It is deterministic and READ-ONLY: the engine reads the ledger to decide who is due; it never sends on its own and never bypasses a gate. A follow-up is still a send, so it passes suppression + cooldown + the daily cap + the warming ceiling, exactly like the first touch.
+- A reply, unsubscribe, or bounce cancels the rest of that prospect's sequence automatically (re-derived from the ledger every run).
+- The review gate stays MANUAL by default: the operator reviews each follow-up draft before it sends (same gate as the first touch). `auto_send: false` is the default.
+
+To turn it on, enable the `followup:` block in `~/.outreach-factory/config.yml` (it ships commented, with the default cadence):
+
+```yaml
+followup:
+  enabled: true          # opt-in
+  max_touches: 3         # touch 1 (the cold email) + 2 follow-ups
+  steps:
+    - after_business_days: 3   # touch 2: a short bump, new angle
+    - after_business_days: 5   # touch 3: a brief breakup
+```
+
+Then `outreach-factory status` shows a `FOLLOW-UPS  due now N` line plus the per-touch send counts, and `/dispatch-outreach` drafts the due follow-ups (the re-engagement register) for the operator to review and send. The engine never advances a prospect past the manual review gate on its own.
 
 ---
 

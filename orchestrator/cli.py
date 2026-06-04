@@ -166,6 +166,9 @@ def cmd_config(_args) -> int:
             print(f"  created: {dst}  (from {src.name})")
     print(f"\n  Auto-filled factory.home ({REPO_ROOT}) and a default vault.path")
     print(f"  ({DEFAULT_HOME / 'vault'}); edit either if you want it elsewhere.")
+    print("\n  Optional, both OFF by default in the config: a warming ramp")
+    print("  (warming:) and follow-up sequences (followup:). Turn either on")
+    print("  when you are ready; leave them off for a single-touch setup.")
     print("\nNext: fill in company + founder identity (and founder.email), then")
     print("run `outreach-factory migrate`, then `outreach-factory init`.")
     return 0
