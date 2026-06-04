@@ -94,8 +94,8 @@ cd ~/code/outreach-factory
 # then, to run your own outreach for real:
 pip install -r orchestrator/requirements.txt
 pip install -r skills/send-outreach/requirements.txt   # Gmail send deps (init needs these)
-./install.sh                       # symlink the skills + run preflight
-./bin/outreach-factory config      # copy the config + .env templates, then edit them
+./bin/outreach-factory config      # copy templates (auto-fills factory.home + a default vault.path); edit company/founder
+./install.sh                       # symlink the skills + run preflight (doctor)
 ./bin/outreach-factory migrate     # scaffold the vault + apply migrations (no OAuth needed)
 ./bin/outreach-factory init        # Gmail OAuth -> vault -> first prospect -> test send
 ```

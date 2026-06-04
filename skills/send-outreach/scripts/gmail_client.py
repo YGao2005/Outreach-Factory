@@ -23,15 +23,31 @@ def _load_or_refresh_creds() -> Credentials:
     if not GMAIL_CREDENTIALS.exists():
         print(
             f"Missing OAuth credentials at {GMAIL_CREDENTIALS}\n\n"
-            "One-time setup:\n"
-            "  1. Go to https://console.cloud.google.com/apis/credentials\n"
-            "  2. Create a project (e.g., 'outreach-factory')\n"
-            "  3. Enable Gmail API: APIs & Services > Enable APIs > search 'Gmail API' > Enable\n"
-            "  4. Configure OAuth consent screen (External, your email as test user)\n"
-            "  5. Create Credentials > OAuth client ID > Desktop app\n"
-            "  6. Download JSON, save as:\n"
-            f"     {GMAIL_CREDENTIALS}\n"
-            "  7. Re-run this command",
+            "One-time Google setup (about 5 minutes, all in the browser):\n"
+            "  1. Go to https://console.cloud.google.com/ and create a project\n"
+            "     (top-bar project picker > New Project; name it anything).\n"
+            "  2. Enable the Gmail API: APIs & Services > Library > search\n"
+            "     'Gmail API' > Enable.\n"
+            "  3. Configure the OAuth consent screen:\n"
+            "       APIs & Services > OAuth consent screen.\n"
+            "       a. User type: External, then Create.\n"
+            "       b. Fill App name + the support email + the developer contact\n"
+            "          email (all can be your own address). Save and Continue.\n"
+            "       c. Scopes page: just Save and Continue (the app asks for the\n"
+            "          send scope at run time; you do not add it here).\n"
+            "       d. Test users: Add Users > add the Gmail address you will\n"
+            "          send from. Save and Continue.\n"
+            "       e. Leave the publishing status as 'Testing'. Do NOT publish.\n"
+            "  4. Create the credential: APIs & Services > Credentials >\n"
+            "     Create Credentials > OAuth client ID > Application type:\n"
+            "     Desktop app > Create.\n"
+            "  5. Download the JSON (the download icon in the dialog) and save it\n"
+            "     as:\n"
+            f"       {GMAIL_CREDENTIALS}\n"
+            "  6. Re-run this command. A browser opens for consent: pick the same\n"
+            "     test-user account, and on the 'Google hasn't verified this app'\n"
+            "     screen click Advanced > 'Go to <app> (unsafe)' to continue (it\n"
+            "     is your own app, so this is expected).",
             file=sys.stderr,
         )
         sys.exit(2)

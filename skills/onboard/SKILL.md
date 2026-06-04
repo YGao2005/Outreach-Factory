@@ -159,11 +159,16 @@ Ask which channel. Two paths:
 
 The agent CANNOT click through Google's console, so give the operator the EXACT steps, then detect the result and run the wizard. Walk them through, in their own browser:
 
-1. Go to the Google Cloud Console, create (or pick) a project.
-2. Enable the **Gmail API** for that project (APIs & Services -> Library -> Gmail API -> Enable).
-3. Configure the OAuth consent screen (External is fine for a personal sender; add your own address as a test user).
-4. Create an **OAuth client ID** of type **Desktop app**. Download the resulting JSON.
-5. Save that JSON to `~/.outreach-factory/credentials/gmail_credentials.json` (or wherever `email_send.gmail_credentials_path` points). Set `email_send.gmail_api: true` in config.
+1. Go to the Google Cloud Console (`https://console.cloud.google.com/`), create (or pick) a project via the top-bar project picker.
+2. Enable the **Gmail API** for that project (APIs & Services -> Library -> search "Gmail API" -> Enable).
+3. Configure the OAuth consent screen (APIs & Services -> OAuth consent screen). Walk the sub-steps, since this is where people get lost:
+   - **User type: External**, then Create.
+   - App name + the support email + the developer contact email (all can be the operator's own address). Save and Continue.
+   - **Scopes**: just Save and Continue. The app requests the send scope at run time; do not add scopes here.
+   - **Test users**: Add Users -> add the exact Gmail address they will send from. Save and Continue.
+   - Leave the publishing status as **Testing** (do NOT publish; Testing is correct for a personal sender).
+4. Create an **OAuth client ID** of type **Desktop app** (APIs & Services -> Credentials -> Create Credentials -> OAuth client ID). Download the resulting JSON.
+5. Save that JSON to `~/.outreach-factory/credentials/gmail_credentials.json` (or wherever `email_send.gmail_credentials_path` points). Set `email_send.gmail_api: true` in config. (When the real `init` runs in Phase 5, the consent browser window shows a "Google hasn't verified this app" screen; tell them to click **Advanced -> Go to <app> (unsafe)** to proceed, since it is their own app.)
 
 Then DETECT that the file landed:
 

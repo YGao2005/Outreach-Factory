@@ -21,24 +21,24 @@ pip install -r orchestrator/requirements.txt
 pip install -r skills/send-outreach/requirements.txt   # Gmail send deps (google-*); init needs these
 
 # 3. Copy the config + .env templates into ~/.outreach-factory/
+#    (auto-fills factory.home and a default vault.path for you).
 ./bin/outreach-factory config
 
-# 4. Edit the copied files:
-#      ~/.outreach-factory/config.yml   company, founder, vault paths
+# 4. Edit the copied config: company + founder identity, and set
+#    founder.email to your real sending address. factory.home and vault.path
+#    are pre-filled; change vault.path only if you want your CRM elsewhere
+#    (e.g. an existing Obsidian vault).
+#      ~/.outreach-factory/config.yml   company, founder, founder.email
 #      ~/.outreach-factory/.env         secrets (Reoon / Resend / suppression), if you use them
 
-# 5. Bootstrap the reply classifier pattern file (Pillar D Week 2).
-#    The classifier is part of the reconcile chain: `reconcile.py --full`
-#    runs Pass G (rule-based unsubscribe classification) once the pattern
-#    file exists. Without it, Pass G refuses to run with a clear bootstrap
-#    message (no silent fallback). Per ADR-0026 D103.
+# 5. (Optional, and can wait until you start handling replies.) Bootstrap the
+#    reply-classifier pattern file. It is NOT needed for your first send; the
+#    reconcile chain's Pass G (rule-based unsubscribe classification) uses it
+#    later and refuses to run with a clear message until it exists (no silent
+#    fallback, per ADR-0026 D103).
 mkdir -p ~/.outreach-factory/classifier
 cp config-template/unsubscribe-patterns.example.yml \
    ~/.outreach-factory/classifier/unsubscribe-patterns.yml
-#    Optionally tune the pattern set for your vertical (B2B vs consumer vs
-#    regulated industries see different reply phrasings). The defaults are
-#    conservative: they catch the common unsubscribe phrasings without
-#    false-positives on legitimate replies.
 
 # 6. Install skills (symlinks repo skills into ~/.claude/skills/).
 ./install.sh

@@ -125,8 +125,31 @@ class _DryRunGmail:
         return next((m for m in self.sent if m["id"] == msg_id), None)
 
 
+def _seed_config_defaults(text: str) -> str:
+    """Fill the two paths the CLI can know for the user, so a freshly copied
+    config works without hand-editing: factory.home (this repo's root, which
+    the CLI already knows as REPO_ROOT) and a default vault.path under the
+    factory home. Targeted line replacements so the template's inline comments
+    survive (a YAML round-trip would strip them). Best-effort: a placeholder
+    that is not found (template changed) is left untouched."""
+    default_vault = DEFAULT_HOME / "vault"
+    replacements = {
+        '  home: "~/code/outreach-factory"': f'  home: "{REPO_ROOT}"',
+        '  path: "/path/to/your/vault"': f'  path: "{default_vault}"',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
 def cmd_config(_args) -> int:
-    """Copy the config + .env templates into ~/.outreach-factory/ (no overwrite)."""
+    """Copy the config + .env templates into ~/.outreach-factory/ (no overwrite).
+
+    The config copy is seeded with the two paths the CLI can know for you:
+    factory.home (this repo) and a default vault.path. That removes two
+    hand-edits a new user would otherwise have to get exactly right before
+    `migrate`/`init`/the skills work (the skills read factory.home, so a wrong
+    value there fails past doctor)."""
     DEFAULT_HOME.mkdir(parents=True, exist_ok=True)
     targets = [
         (CONFIG_TEMPLATE, DEFAULT_HOME / "config.yml"),
@@ -136,9 +159,15 @@ def cmd_config(_args) -> int:
         if dst.exists():
             print(f"  exists, leaving as-is: {dst}")
         else:
-            dst.write_text(src.read_text())
+            text = src.read_text()
+            if src == CONFIG_TEMPLATE:
+                text = _seed_config_defaults(text)
+            dst.write_text(text)
             print(f"  created: {dst}  (from {src.name})")
-    print("\nNext: edit the files above, then run `outreach-factory init`.")
+    print(f"\n  Auto-filled factory.home ({REPO_ROOT}) and a default vault.path")
+    print(f"  ({DEFAULT_HOME / 'vault'}); edit either if you want it elsewhere.")
+    print("\nNext: fill in company + founder identity (and founder.email), then")
+    print("run `outreach-factory migrate`, then `outreach-factory init`.")
     return 0
 
 
@@ -464,7 +493,8 @@ def cmd_migrate(_args) -> int:
         print("Run `outreach-factory doctor` to confirm.")
         return 0
 
-    print(f"Applying {len(pending)} pending migration(s)...")
+    print(f"Applying {len(pending)} pending migration(s)... "
+          "(ignore any Obsidian Sync cautions below if you do not use Obsidian)")
     results = runner.apply()
     applied = [r for r in results if getattr(r, "applied", False)]
     for r in applied:

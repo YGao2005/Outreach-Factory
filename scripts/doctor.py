@@ -361,6 +361,25 @@ def check_deliverability(config: dict) -> dict:
             enables="cold email that reaches the inbox",
         )
 
+    # Shared consumer-provider mailboxes manage SPF/DKIM/DMARC themselves and you
+    # cannot set DNS on them, so a "missing SPF" verdict there is just noise.
+    # Say the honest thing instead.
+    shared_providers = {
+        "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+        "msn.com", "yahoo.com", "ymail.com", "icloud.com", "me.com", "aol.com",
+        "proton.me", "protonmail.com",
+    }
+    if domain in shared_providers:
+        return _result(
+            "deliverability", WARN,
+            f"sending from a shared provider mailbox ({domain})",
+            hint="SPF/DKIM/DMARC are managed by the provider, not you; nothing to "
+                 "fix here. Cold-email deliverability tuning and the warming ramp "
+                 "apply once you send from your own domain (a provider mailbox is "
+                 "fine for low volume).",
+            enables="cold email that reaches the inbox",
+        )
+
     send = config.get("email_send") or {}
     provider = "resend" if (send.get("resend_api_key") or "").strip() else "google"
     try:
