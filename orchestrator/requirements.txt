@@ -15,7 +15,7 @@ python-dotenv>=1.2.2
 # Pillar G Week 3 — OpenTelemetry SDK + Prometheus exporter (per ADR-0050
 # D273's framework decision + ADR-0052's Week 3 OTel SDK initialization).
 opentelemetry-api>=1.38
-opentelemetry-sdk>=1.38
+opentelemetry-sdk>=1.42.1
 opentelemetry-exporter-prometheus>=0.59b0
 
 # Pillar H Week 4 — asyncio-native HTTP server for the daemon's health
