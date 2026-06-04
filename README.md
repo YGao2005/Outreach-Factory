@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/YGao2005/Outreach-Factory/actions/workflows/ci.yml/badge.svg)](https://github.com/YGao2005/Outreach-Factory/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Billing: subscription, no API](https://img.shields.io/badge/billing-subscription%2C%20no%20API-success.svg)](docs/BILLING.md)
 
 ## See the difference
