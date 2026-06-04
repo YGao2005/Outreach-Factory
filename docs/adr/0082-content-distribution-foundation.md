@@ -161,3 +161,111 @@ Phase 1's binding unit coverage lands now: the scheduler's eligibility math + th
 
 - The continuous watch loop is deferred; the operator-triggered pass is the Phase 1 trigger and the watch loop is a later thin wrapper.
 - ScholarFeed is the first source + subject; the held-out-tenant topology (a different repo + the MCP feed) guards against golden-path overfit, as the cold side's ScholarFeed tenant already does.
+
+## Phase 2 addendum (2026-06-04): capability correction + the human-gated posting decision (D413-D417)
+
+Phase 2 began with a research + adversarial-review workflow (six component specs:
+ledger substrate, posting clients, dispatcher, guardrails, reconcile, engagement).
+It surfaced that D412's Phase 2 premise was FALSE and forced the decisions below.
+The plan is recorded at `.planning/PHASE2-content-distribution-PLAN.md`.
+
+### D413. Capability correction: "the two clients we already have" do not exist as posting clients
+
+D412 said Phase 2 = "LinkedIn + X dispatch (the two clients we already have)."
+Verified against the code, this is wrong: the LinkedIn MCP exposes read + DM
+(`send_message`) + connect only (no create-post / share / ugcPost tool);
+`twitter_client.py` is a DM-only stub whose constructor raises NotImplementedError
+(no `create_tweet`); and no posting-client module exists anywhere in the repo.
+Real social auto-posting would need the paid X API v2 (about 200 USD/mo) or a
+LinkedIn `w_member_social` OAuth app review, neither provisioned. Browser
+automation cannot post either: the available Scrapling MCP is fetch/scrape +
+sessions + screenshot only, with no click/type/submit, so it can load a composer
+but not submit it. D412's per-channel posting assumption is retracted.
+
+### D414. The post button is HUMAN-GATED for every channel in v2 (draft-and-manual)
+
+Every channel (not just communities) is draft-and-manual in this milestone: the
+dispatcher routes each due post to a draft-and-remind action (produce the text +
+the target + a "post this yourself" reminder); the operator posts. This is the
+right posture on its own merits (reputation, ToS, and the operator stays the
+publisher of their own voice), and it matches the existing communities-draft-only
+structure (ADR-0082 D411(2)) now generalized to all channels. The dispatcher has
+NO auto-post code path in v2. Real auto-post (paid X API / LinkedIn OAuth) is a
+deliberate later step behind the posting-client SEAM: a `ContentPostingClientLike`
+protocol whose v2 implementations are refuse-loud placeholders (they never return
+a fabricated post_id), so dropping in a real client later is a seam swap, not a
+rewrite. `auto_publish` stays off; the dispatcher gates on it (returning
+review_gate_held when off, since the read-only scheduler does not enforce it).
+
+### D415. Scrapling is the engagement + reconcile READ client (the feedback loop gets teeth)
+
+The engagement ingest pass and the reconcile post-id read-back had no live path.
+The Scrapling MCP (`stealthy_fetch` + persistent cookie `open_session`) is the
+read client for both, behind a `ContentEngagementClientLike` / read-back seam.
+With the operator's session cookies (already used by `find-leads` /
+`research-prospect`), it scrapes a public post's like / reshare / comment /
+impression counts via a CSS selector. Best-effort + opt-in per channel per ADR-0082
+D409: a failed or selector-broken scrape yields NO event, and the report says
+"no signal" rather than a fabricated number (R044 mitigation). Read-scraping is far
+lower risk than automated posting (it is the same surface lead research already
+uses) and needs no paid API. Caveats: it needs operator session cookies (logged-out
+LinkedIn shows almost nothing) and is scrape-fragile by nature.
+
+### D416. Event-catalog + builder discipline for Phase 2 (the reviewer's landmine fixes)
+
+The adversarial review returned needs-revision; these corrections are binding:
+
+* **No new event classes.** Phase 2 adds ZERO classes beyond the eight Phase 1
+  `CONTENT_NEW_EVENT_CLASSES`. Specifically the dispatcher does NOT emit a
+  `content_run_complete` (it is uncatalogued; drop it) and does NOT emit a
+  `cost_incurred` on the broadcast path (posting is human-done and the humanizer is
+  subscription-billed, so there is no API cost, and an out-of-`COST_SOURCES_CATALOG`
+  source would violate the closed-set).
+* **One builder change:** add `body_hash` to `build_distribution_confirmed_payload`
+  so the no-double-post rule reads it off the confirmed event.
+* **Ledger substrate lands now**, but ONLY the parity-neutral index: a new
+  `_idx_post_id` keyed by `(channel, post_id)` (NOT a bare post_id, to avoid
+  cross-platform id collision) mirroring `_idx_gmail_msg`, plus `query_by_post_id`,
+  for the reconcile read-back's O(1) lookup. The local population variable is named
+  `post_id` (NOT `pid`, bound to person_id) to avoid shadowing. The generic
+  `_INTENT_TYPES` / `_OUTCOME_TYPES` sets are deliberately NOT extended with the
+  distribution family: those sets feed the COLD-SIDE dispatch-health + send-latency
+  surface (the funnel + observability mirror-parity per ADR-0059 D329), and a
+  human-gated broadcast post is not a latency-tracked send. It has its own SEPARATE
+  report (D409), so adding distribution there would both break the send-latency
+  mirror-parity and conflate broadcast with cold-side health. (The Phase 2 research
+  spec proposed extending those sets; the gate's mirror-parity test caught the
+  conflation, and this is the corrected decision.) The content reconcile pass
+  therefore owns its OWN intent-to-outcome correlation walk over the events, exactly
+  as `content.derived_content_stage` owns its own stage walk in Phase 1.
+* **Content recovery marker:** distribution intents use the `cont_` id prefix and a
+  content-specific recovery marker/regex; the existing `INTENT_FOOTER_RE` hardcodes
+  `snd_` and is not reused. Under draft-and-manual the recovery story is simpler:
+  the reconcile read-back correlates a landed post by scraping the author's recent
+  posts (author + recency + hook fuzzy match), so no programmatic in-body marker is
+  injected, which also moots the X 280-char marker problem.
+
+### D417. Content-post guardrails use a SEPARATE ContentRuleContext
+
+The post-time guardrails (per-channel posting cap, no-double-post on
+`body_hash` + channel, promotional-ratio) run on the SAME policy engine but through
+a NEW frozen `ContentRuleContext` + a `ContentRule` protocol, NOT by widening the
+person-centric `RuleContext` (a post has `content_id` + `channel` + `body_hash` and
+no `person_id`; the existing `_block_when_matches` would AttributeError on it). The
+posting-cap rule's window matches the scheduler's `_cap_headroom` rolling-24h so the
+soft pre-check and the hard gate never disagree. Under draft-and-manual these gate
+whether the dispatcher SURFACES a post for the operator to paste; they become the
+hard send-time gate unchanged when a real posting client is dropped into the seam.
+
+### Phase 2 staging (revised from D412 by the capability reality)
+
+1. Ledger substrate (D416) + tests. The decision-independent first slice.
+2. content.py builder + report amendments (body_hash + engagement delta semantics).
+3. Posting-client seam (refuse-loud placeholders) + the draft-and-manual dispatcher (D414).
+4. Content-post guardrails (D417).
+5. Reconcile read-back pass + engagement ingest pass, both Scrapling-backed (D415).
+6. Binding golden-path row + the `status` CONTENT block + publish.
+
+Owned channels (blog / newsletter) remain a later step; under D414 they are
+draft-and-manual like the rest until a real owned-channel publish client lands,
+at which point they are the lowest-risk channel to auto-publish first.

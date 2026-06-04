@@ -170,6 +170,18 @@ _OUTCOME_TYPES = frozenset({
     "calendar_booking_confirmed", "calendar_booking_failed",
 })
 
+# NOTE (ADR-0082 D416 Phase 2): the content-distribution two-phase family
+# (distribution_intent / distribution_confirmed / distribution_failed) is
+# deliberately NOT added to ``_INTENT_TYPES`` / ``_OUTCOME_TYPES``. Those sets
+# feed the COLD-SIDE dispatch-health + send-latency surface (funnel +
+# observability mirror-parity per ADR-0059 D329); a human-gated broadcast post
+# is not a latency-tracked send and has its own SEPARATE report
+# (orchestrator/content_scheduler.build_content_report, ADR-0082 D409). The
+# content reconcile pass owns its own intent->outcome correlation walk, exactly
+# as content.derived_content_stage owns its own stage walk. Only the
+# parity-neutral ``_idx_post_id`` index (keyed by (channel, post_id), below)
+# lands in the ledger, for the reconcile read-back's O(1) lookup.
+
 # Two-phase intent types — the symmetric counterpart of ``_OUTCOME_TYPES``.
 # An ``intent`` event opens a two-phase commit; an ``outcome`` event closes
 # it. ``last_send_for`` walks intents that match a given channel and looks
@@ -182,6 +194,8 @@ _INTENT_TYPES = frozenset({
     "li_dm_intent",
     "tw_dm_intent",
     "calendar_booking_intent",
+    # Content distribution intents are intentionally absent here; see the NOTE
+    # under _OUTCOME_TYPES above (ADR-0082 D416 Phase 2).
 })
 
 # Confirmed-outcome subset of ``_OUTCOME_TYPES`` — used by ``last_send_for``
@@ -332,6 +346,7 @@ class Ledger:
         _idx_intent_origin   intent_id  -> send_intent event
         _idx_intent_outcome  intent_id  -> send_confirmed|failed|aborted
         _idx_gmail_msg       gmail_message_id -> event
+        _idx_post_id         (channel, post_id) -> distribution_confirmed event
         _idx_email           email_lower -> set[person_id]
     """
 
@@ -345,6 +360,12 @@ class Ledger:
         self._idx_intent_origin: dict[str, dict] = {}
         self._idx_intent_outcome: dict[str, dict] = {}
         self._idx_gmail_msg: dict[str, dict] = {}
+        # Content distribution post-id index (ADR-0082 D408/D416 Phase 2): the
+        # per-channel two-phase correlation key, the analog of _idx_gmail_msg.
+        # Keyed by (channel, post_id) — NOT a bare post_id — so opaque platform
+        # ids cannot collide across channels. Materialized from the post_id on
+        # distribution_confirmed; the reconcile read-back's O(1) lookup.
+        self._idx_post_id: dict[tuple[str, str], dict] = {}
         self._idx_gmail_thread: dict[str, list[dict]] = {}
         self._idx_email: dict[str, set[str]] = {}
         self._idx_intents_by_person: dict[str, list[dict]] = {}
@@ -573,6 +594,7 @@ class Ledger:
         self._idx_intent_origin.clear()
         self._idx_intent_outcome.clear()
         self._idx_gmail_msg.clear()
+        self._idx_post_id.clear()
         self._idx_gmail_thread.clear()
         self._idx_email.clear()
         self._idx_intents_by_person.clear()
@@ -600,6 +622,14 @@ class Ledger:
             gid = e.get("gmail_message_id")
             if gid:
                 self._idx_gmail_msg[gid] = e
+            # Content distribution post-id (ADR-0082 D416 Phase 2). Only
+            # distribution_confirmed carries post_id; intent/failed do not, so
+            # the truthy guard keeps every other event out. Keyed by (channel,
+            # post_id). Local name is ``post_id`` (NOT ``pid``, which is bound to
+            # person_id above) to avoid shadowing the per-person indexing.
+            post_id = e.get("post_id")
+            if post_id:
+                self._idx_post_id[(e.get("channel") or "", post_id)] = e
             tid = e.get("gmail_thread_id")
             if tid:
                 self._idx_gmail_thread.setdefault(tid, []).append(e)
@@ -639,6 +669,16 @@ class Ledger:
     def query_by_gmail_message_id(self, gmail_message_id: str) -> Event | None:
         self._build_indexes()
         e = self._idx_gmail_msg.get(gmail_message_id)
+        return Event.from_dict(e) if e else None
+
+    def query_by_post_id(self, post_id: str, *, channel: str) -> Event | None:
+        """Return the ``distribution_confirmed`` for this (channel, post_id),
+        or None. The content-distribution analog of
+        :meth:`query_by_gmail_message_id` (ADR-0082 D408/D416 Phase 2) — the
+        reconcile read-back's O(1) correlation lookup. Keyed by (channel,
+        post_id) so opaque platform ids cannot collide across channels."""
+        self._build_indexes()
+        e = self._idx_post_id.get((channel, post_id))
         return Event.from_dict(e) if e else None
 
     def query_by_gmail_thread_id(self, gmail_thread_id: str) -> list[Event]:

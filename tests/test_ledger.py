@@ -174,6 +174,55 @@ class TestAppendAndQuery:
 
 
 # ---------------------------------------------------------------------------
+# Content distribution two-phase index (ADR-0082 D408/D416 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestDistributionIndex:
+    def test_query_by_post_id(self, led: Ledger):
+        led.append({"type": "distribution_confirmed", "content_id": "cpc_1",
+                    "channel": "linkedin_post", "intent_id": "cont_x",
+                    "post_id": "urn:li:activity:7"})
+        e = led.query_by_post_id("urn:li:activity:7", channel="linkedin_post")
+        assert e is not None
+        assert e["post_id"] == "urn:li:activity:7"
+
+    def test_post_id_keyed_by_channel(self, led: Ledger):
+        # Opaque ids can collide across platforms; the (channel, post_id) key
+        # keeps them distinct.
+        led.append({"type": "distribution_confirmed", "content_id": "cpc_1",
+                    "channel": "linkedin_post", "intent_id": "cont_a", "post_id": "123"})
+        led.append({"type": "distribution_confirmed", "content_id": "cpc_2",
+                    "channel": "x_post", "intent_id": "cont_b", "post_id": "123"})
+        assert led.query_by_post_id("123", channel="linkedin_post")["content_id"] == "cpc_1"
+        assert led.query_by_post_id("123", channel="x_post")["content_id"] == "cpc_2"
+
+    def test_query_by_post_id_missing(self, led: Ledger):
+        assert led.query_by_post_id("nope", channel="x_post") is None
+
+    def test_distribution_stays_out_of_cold_side_intent_index(self, led: Ledger):
+        # ADR-0082 D416: distribution two-phase events are NOT in the generic
+        # cold-side intent/outcome index (which feeds dispatch-health latency);
+        # the broadcast surface has its own report + its own correlation walk.
+        led.append({"type": "distribution_intent", "content_id": "cpc_1",
+                    "channel": "x_post", "intent_id": "cont_y"})
+        assert led.query_by_intent("cont_y") is None
+        since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        open_ids = {i.get("intent_id") for i in led.open_intents(since=since)}
+        assert "cont_y" not in open_ids
+
+    def test_distribution_event_does_not_pollute_person_indexes(self, led: Ledger):
+        # The KEY isolation invariant: distribution events carry content_id, NOT
+        # person_id, and a POST_CHANNELS channel, so they never enter the
+        # per-person walk even though distribution_confirmed auto-enrolls into
+        # _CONFIRMED_TYPES.
+        led.append({"type": "distribution_confirmed", "content_id": "cpc_1",
+                    "channel": "linkedin_post", "intent_id": "cont_z", "post_id": "p9"})
+        assert led.last_send_for("p_any", channel="linkedin_post") is None
+        assert led.confirmed_send_count("p_any", channel="linkedin_post") == 0
+
+
+# ---------------------------------------------------------------------------
 # Last-send gate
 # ---------------------------------------------------------------------------
 
