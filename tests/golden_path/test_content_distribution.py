@@ -101,7 +101,8 @@ class TestGoldenPathContentDistribution:
         tmp_ledger.append({
             **c.build_distribution_confirmed_payload(
                 content_id=cid, channel="linkedin_post",
-                intent_id=c.new_distribution_intent_id(), post_id="li_urn_998"),
+                intent_id=c.new_distribution_intent_id(), post_id="li_urn_998",
+                body_hash=piece.variant_for("linkedin_post").body_hash),
             "type": "distribution_confirmed"})
 
         # 6. The posted channel drops out; the piece's stage is now terminal.

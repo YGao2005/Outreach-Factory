@@ -238,7 +238,7 @@ class TestEventBuilders:
         lambda: c.build_content_review_approved_payload(
             content_id="c", channel="x_post", scheduled_at="t", body_hash="h", register="tiktok"),
         lambda: c.build_distribution_confirmed_payload(
-            content_id="c", channel="x_post", intent_id="i", post_id=""),
+            content_id="c", channel="x_post", intent_id="i", post_id="", body_hash="h"),
         lambda: c.build_engagement_observed_payload(
             content_id="c", channel="x_post", metrics="notadict", observed_at="t"),
     ])
@@ -274,7 +274,8 @@ class TestDerivedStage:
             type="content_review_approved", ts="2026-06-01T12:00:00Z"))
         assert c.derived_content_stage(ev, "cpc_1") == "approved"
         ev.append(_ev(c.build_distribution_confirmed_payload(
-            content_id="cpc_1", channel="x_post", intent_id="i", post_id="p"),
+            content_id="cpc_1", channel="x_post", intent_id="i", post_id="p",
+            body_hash="sha256:h"),
             type="distribution_confirmed", ts="2026-06-02T09:05:00Z"))
         assert c.derived_content_stage(ev, "cpc_1") == "posted"
 
@@ -309,9 +310,10 @@ def _drafted(cid, sref="feat-abc", ts="2026-06-03T10:00:00Z"):
                type="content_drafted", ts=ts)
 
 
-def _confirm(cid, channel, ts, *, post_id="p"):
+def _confirm(cid, channel, ts, *, post_id="p", body_hash="sha256:h"):
     return _ev(c.build_distribution_confirmed_payload(
-        content_id=cid, channel=channel, intent_id="i", post_id=post_id),
+        content_id=cid, channel=channel, intent_id="i", post_id=post_id,
+        body_hash=body_hash),
         type="distribution_confirmed", ts=ts)
 
 
@@ -432,3 +434,52 @@ class TestReport:
         a = cs.render_report(cs.build_content_report(ev, now=NOW))
         b = cs.render_report(cs.build_content_report(ev, now=NOW))
         assert a == b
+
+
+class TestEngagementDelta:
+    def _obs(self, cid, channel, metrics, ts):
+        return _ev(c.build_engagement_observed_payload(
+            content_id=cid, channel=channel, metrics=metrics, observed_at=ts),
+            type="engagement_observed", ts=ts)
+
+    def test_confirmed_requires_body_hash(self):
+        with pytest.raises(ValueError, match="body_hash"):
+            c.build_distribution_confirmed_payload(
+                content_id="c", channel="x_post", intent_id="i", post_id="p", body_hash="")
+
+    def test_engagement_metric_must_be_nonneg_int(self):
+        with pytest.raises(ValueError, match="non-negative int"):
+            c.build_engagement_observed_payload(
+                content_id="c", channel="x_post", metrics={"likes": -1}, observed_at="t")
+
+    def test_prior_engagement_sums_deltas(self):
+        ev = [self._obs("cpc_1", "x_post", {"likes": 10}, "2026-06-04T10:00:00Z"),
+              self._obs("cpc_1", "x_post", {"likes": 5, "reshares": 1}, "2026-06-04T12:00:00Z"),
+              self._obs("cpc_2", "x_post", {"likes": 99}, "2026-06-04T12:00:00Z")]
+        assert c.prior_engagement(ev, "cpc_1", "x_post") == {"likes": 15, "reshares": 1}
+
+    def test_delta_first_scrape_is_full(self):
+        # No prior observation -> the whole cumulative count is the first delta.
+        assert c.compute_engagement_delta([], "cpc_1", "x_post", {"likes": 37, "comments": 6}) \
+            == {"likes": 37, "comments": 6}
+
+    def test_delta_subtracts_prior(self):
+        ev = [self._obs("cpc_1", "x_post", {"likes": 37, "comments": 6}, "2026-06-04T12:00:00Z")]
+        # Re-poll shows 50 likes / 8 comments cumulative -> delta 13 / 2.
+        assert c.compute_engagement_delta(ev, "cpc_1", "x_post", {"likes": 50, "comments": 8}) \
+            == {"likes": 13, "comments": 2}
+
+    def test_delta_floors_at_zero_on_lower_scrape(self):
+        # A transient lower read (a count "going down") yields no negative delta.
+        ev = [self._obs("cpc_1", "x_post", {"likes": 37}, "2026-06-04T12:00:00Z")]
+        assert c.compute_engagement_delta(ev, "cpc_1", "x_post", {"likes": 30}) == {}
+
+    def test_delta_emitted_then_summed_is_cumulative(self):
+        # The contract: emit deltas, the SUM-based report reconstructs cumulative.
+        ev = []
+        for scrape in ({"likes": 10}, {"likes": 25}, {"likes": 25}):
+            d = c.compute_engagement_delta(ev, "cpc_1", "x_post", scrape)
+            if d:
+                ev.append(self._obs("cpc_1", "x_post", d, "2026-06-04T12:00:00Z"))
+        rep = cs.build_content_report(ev, now=NOW)
+        assert rep["engagement"]["by_channel"]["x_post"]["likes"] == 25

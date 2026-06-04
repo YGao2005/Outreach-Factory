@@ -705,18 +705,25 @@ def build_distribution_intent_payload(
 
 
 def build_distribution_confirmed_payload(
-    *, content_id: str, channel: str, intent_id: str, post_id: str,
+    *, content_id: str, channel: str, intent_id: str, post_id: str, body_hash: str,
 ) -> dict:
-    """Two-phase commit phase 2: the post landed; ``post_id`` is the read-back key."""
+    """Two-phase commit phase 2: the post landed; ``post_id`` is the read-back key.
+
+    Carries ``body_hash`` (ADR-0082 D416) so the no-double-post guard reads the
+    posted variant's hash directly off the confirmed event without an
+    intent-join.
+    """
     _require(content_id, "content_id")
     _require_channel(channel)
     _require(intent_id, "intent_id")
     _require(post_id, "post_id")
+    _require(body_hash, "body_hash")
     return {
         "content_id": content_id,
         "channel": channel,
         "intent_id": intent_id,
         "post_id": post_id,
+        "body_hash": body_hash,
         "_emitted_by": EMITTED_BY,
     }
 
@@ -746,12 +753,24 @@ def build_engagement_observed_payload(
     ``metrics`` is whatever the channel exposes (likes / reshares / comments /
     impressions). Best-effort: a channel with no readable signal simply never
     emits this, and the report says "no signal" rather than guessing.
+
+    DELTA semantics (ADR-0082 D416): the metrics here are the DELTA since the
+    last observation, NOT a cumulative snapshot. ``build_content_report`` SUMS
+    ``engagement_observed`` metrics, so re-polling a post and emitting cumulative
+    snapshots would double-count. The ingest pass computes the delta with
+    :func:`compute_engagement_delta` before emitting; summing the deltas
+    reconstructs the cumulative total. Metric values must be non-negative ints.
     """
     _require(content_id, "content_id")
     _require_channel(channel)
     _require(observed_at, "observed_at")
     if not isinstance(metrics, dict):
         raise ValueError("metrics must be a mapping")
+    for k, v in metrics.items():
+        if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            raise ValueError(
+                f"engagement metric {k!r} must be a non-negative int delta, got {v!r}"
+            )
     return {
         "content_id": content_id,
         "channel": channel,
@@ -759,6 +778,57 @@ def build_engagement_observed_payload(
         "observed_at": observed_at,
         "_emitted_by": EMITTED_BY,
     }
+
+
+def prior_engagement(
+    events: Iterable[object], content_id: str, channel: str,
+) -> dict[str, int]:
+    """Sum prior ``engagement_observed`` deltas for a (content_id, channel).
+
+    The cumulative total observed so far, reconstructed from the ledger (the
+    source of truth, no state outside it). The ingest pass subtracts this from a
+    fresh cumulative scrape to get the next delta (:func:`compute_engagement_delta`).
+    """
+    totals: dict[str, int] = {}
+    for raw in events:
+        ev = _coerce_event(raw)
+        if ev.get("type") != "engagement_observed":
+            continue
+        if ev.get("content_id") != content_id or ev.get("channel") != channel:
+            continue
+        for k, v in (ev.get("metrics") or {}).items():
+            try:
+                totals[str(k)] = totals.get(str(k), 0) + int(v)
+            except (TypeError, ValueError):
+                continue
+    return totals
+
+
+def compute_engagement_delta(
+    events: Iterable[object],
+    content_id: str,
+    channel: str,
+    scraped_metrics: dict,
+) -> dict[str, int]:
+    """The non-negative per-metric delta to emit given a fresh CUMULATIVE scrape.
+
+    ``scraped_metrics`` is the current cumulative count from the channel (e.g.
+    the post now shows 37 likes). Returns ``current - prior`` per metric, floored
+    at 0 (counts only go up; a lower scrape is a transient read error, not a
+    negative delta). Metrics whose delta is 0 are dropped (no-op observation).
+    Emitting this delta keeps the SUM-based report's cumulative correct.
+    """
+    prior = prior_engagement(events, content_id, channel)
+    delta: dict[str, int] = {}
+    for k, v in (scraped_metrics or {}).items():
+        try:
+            cur = int(v)
+        except (TypeError, ValueError):
+            continue
+        d = cur - prior.get(str(k), 0)
+        if d > 0:
+            delta[str(k)] = d
+    return delta
 
 
 # ---------------------------------------------------------------------------
@@ -865,9 +935,11 @@ __all__ = [
     "build_distribution_failed_payload",
     "build_distribution_intent_payload",
     "build_engagement_observed_payload",
+    "compute_engagement_delta",
     "content_sources_from_config",
     "derived_content_stage",
     "filter_papers",
+    "prior_engagement",
     "git_commits_since",
     "is_mechanical_truncation",
     "new_content_id",

@@ -376,6 +376,11 @@ def build_content_report(events: Iterable[object], *, now: datetime) -> dict:
     auto-tune. Best-effort signal: a channel with no readable engagement shows
     ``"signal": "none"`` rather than a fabricated number. Deterministic +
     byte-identical (sorted keys) per ADR-0031 D140; read-only per ADR-0059 D325.
+
+    ``engagement_observed`` metrics are DELTAS (ADR-0082 D416); this SUMS them, so
+    the per-channel totals are the cumulative engagement. The ingest pass emits
+    deltas via :func:`content.compute_engagement_delta`, never cumulative
+    snapshots, so re-polling a post does not double-count.
     """
     published_by_channel: dict[str, int] = defaultdict(int)
     eng_by_channel: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
