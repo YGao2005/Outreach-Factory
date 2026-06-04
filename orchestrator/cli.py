@@ -610,6 +610,67 @@ def _status_warming_decision(cfg: dict | None, events, now):
 _STATUS_BLOCK_TYPES = ("dedup_blocked", "cooldown_blocked", "policy_blocked")
 
 
+def _status_followup_lines(cfg, events, now) -> list[str] | None:
+    """Build the follow-up status block: who is due now (per step) + the
+    per-touch send counts. Returns a list of printable lines, or None when the
+    follow-up config is absent / unparseable (status then skips the section).
+
+    Reuses the events already loaded by cmd_status (no second ledger walk). The
+    due list comes from the SAME deterministic engine the dispatch skill +
+    send path consult, so status, dispatch, and the gate never disagree.
+    """
+    if not cfg:
+        return None
+    try:
+        from orchestrator import followup as _followup
+
+        cadence = _followup.cadence_config_from_dict(cfg.get("followup"))
+    except Exception:
+        return None
+
+    # Per-touch send counts come from the followup_step tag the send path stamps
+    # on every send_confirmed (0 = cold, 1 = first follow-up, ...).
+    per_touch: dict[int, int] = {}
+    for e in events:
+        if e.get("type") == "send_confirmed" and (e.get("channel") or "email") == "email":
+            step = e.get("followup_step")
+            step = step if isinstance(step, int) else 0
+            per_touch[step] = per_touch.get(step, 0) + 1
+
+    if not cadence.enabled:
+        # A quiet nudge only when there is a sequence worth following up.
+        if sum(per_touch.values()) > 0:
+            return ["    follow-ups off (set followup.enabled: true in config to "
+                    "sequence non-repliers)"]
+        return None
+
+    due = _followup.compute_due_followups(events, cadence, now=now)
+    by_step: dict[int, int] = {}
+    for a in due:
+        by_step[a.next_step] = by_step.get(a.next_step, 0) + 1
+
+    steps_desc = ", ".join(
+        f"+{s.after_business_days}" for s in cadence.steps
+    ) or "none"
+    lines = [
+        f"\n  FOLLOW-UPS  (max {cadence.max_touches} touches; "
+        f"steps at {steps_desc} business days)"
+    ]
+    if due:
+        detail = ", ".join(
+            f"follow-up {step}: {by_step[step]}" for step in sorted(by_step)
+        )
+        lines.append(f"    due now         {len(due)}   ({detail})")
+    else:
+        lines.append("    due now         0")
+    if per_touch:
+        touch_detail = ", ".join(
+            f"touch {step + 1}: {per_touch[step]}" for step in sorted(per_touch)
+        )
+        lines.append(f"    sent by touch   {touch_detail}")
+    return lines
+
+
 def cmd_status(_args) -> int:
     """Print what the operator actually wants to know: what went out, who
     replied, what is queued, and whether it is safe to send more today.
@@ -717,6 +778,11 @@ def cmd_status(_args) -> int:
     print(f"    replies         {replies_week}")
     print(f"    bounces         {bounces_week}")
     print(f"    blocked         {blocks_week}")
+
+    followup_lines = _status_followup_lines(cfg, events, now)
+    if followup_lines:
+        for line in followup_lines:
+            print(line)
 
     print(f"\n  PIPELINE  (last 30 days, from the ledger)")
     for s in ("queued", "researched", "drafted", "ready", "sent"):

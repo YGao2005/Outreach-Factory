@@ -867,7 +867,8 @@ class TestDefaultRegistries:
         # ledger/0007 backfill enrolled.source_skill per ADR-0036 D170).
         # (Weeks 1 + 4 + Pillar D Weeks 2-3 + Pillar E Weeks 1-8 added
         # zero migrations.)
-        assert len(all_pending) == 19
+        # + follow-up cadence (1 — vault/0006 add followup_step).
+        assert len(all_pending) == 20
         # Per ADR-0013 D27 + ADR-0014 D34: VAULT first, then LEDGER,
         # then POLICY. Within each category, sequential id order.
         assert all_pending[0].id == "0001_add_schema_version_to_person_notes"
@@ -880,35 +881,37 @@ class TestDefaultRegistries:
         assert all_pending[3].category == MigrationCategory.VAULT
         assert all_pending[4].id == "0005_add_discovery_lineage_to_identity_keys"
         assert all_pending[4].category == MigrationCategory.VAULT
-        assert all_pending[5].id == "0001_close_orphan_send_intents"
-        assert all_pending[5].category == MigrationCategory.LEDGER
-        assert all_pending[6].id == "0002_backfill_send_history"
+        assert all_pending[5].id == "0006_add_followup_step_to_person_notes"
+        assert all_pending[5].category == MigrationCategory.VAULT
+        assert all_pending[6].id == "0001_close_orphan_send_intents"
         assert all_pending[6].category == MigrationCategory.LEDGER
-        assert all_pending[7].id == "0003_baseline_li_invite_history"
+        assert all_pending[7].id == "0002_backfill_send_history"
         assert all_pending[7].category == MigrationCategory.LEDGER
-        assert all_pending[8].id == "0004_baseline_li_dm_history"
+        assert all_pending[8].id == "0003_baseline_li_invite_history"
         assert all_pending[8].category == MigrationCategory.LEDGER
-        assert all_pending[9].id == "0005_baseline_tw_dm_history"
+        assert all_pending[9].id == "0004_baseline_li_dm_history"
         assert all_pending[9].category == MigrationCategory.LEDGER
-        assert all_pending[10].id == "0006_baseline_calendar_booking_history"
+        assert all_pending[10].id == "0005_baseline_tw_dm_history"
         assert all_pending[10].category == MigrationCategory.LEDGER
-        assert all_pending[11].id == "0007_backfill_enrolled_source_skill"
+        assert all_pending[11].id == "0006_baseline_calendar_booking_history"
         assert all_pending[11].category == MigrationCategory.LEDGER
-        assert all_pending[12].id == "0001_add_engine_compat_field"
-        assert all_pending[12].category == MigrationCategory.POLICY
-        assert all_pending[13].id == "0002_add_li_invite_weekly_cap"
+        assert all_pending[12].id == "0007_backfill_enrolled_source_skill"
+        assert all_pending[12].category == MigrationCategory.LEDGER
+        assert all_pending[13].id == "0001_add_engine_compat_field"
         assert all_pending[13].category == MigrationCategory.POLICY
-        assert all_pending[14].id == "0003_add_li_dm_weekly_cap"
+        assert all_pending[14].id == "0002_add_li_invite_weekly_cap"
         assert all_pending[14].category == MigrationCategory.POLICY
-        assert all_pending[15].id == "0004_add_tw_dm_weekly_cap"
+        assert all_pending[15].id == "0003_add_li_dm_weekly_cap"
         assert all_pending[15].category == MigrationCategory.POLICY
-        assert all_pending[16].id == "0005_add_calendar_booking_daily_cap"
+        assert all_pending[16].id == "0004_add_tw_dm_weekly_cap"
         assert all_pending[16].category == MigrationCategory.POLICY
-        assert all_pending[17].id == "0006_add_cross_channel_email_linkedin_cooldown"
+        assert all_pending[17].id == "0005_add_calendar_booking_daily_cap"
         assert all_pending[17].category == MigrationCategory.POLICY
-        assert all_pending[18].id == "0007_add_reply_classifier_llm_cap"
+        assert all_pending[18].id == "0006_add_cross_channel_email_linkedin_cooldown"
         assert all_pending[18].category == MigrationCategory.POLICY
+        assert all_pending[19].id == "0007_add_reply_classifier_llm_cap"
+        assert all_pending[19].category == MigrationCategory.POLICY
         # Per-category breakdown.
         assert len(runner.pending(MigrationCategory.LEDGER)) == 7
-        assert len(runner.pending(MigrationCategory.VAULT)) == 5
+        assert len(runner.pending(MigrationCategory.VAULT)) == 6
         assert len(runner.pending(MigrationCategory.POLICY)) == 7

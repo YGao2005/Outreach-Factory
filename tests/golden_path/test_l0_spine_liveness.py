@@ -872,3 +872,107 @@ class TestGoldenPathL0SecurityCompliance:
         keystore.destroy_key(kid)
         with _pytest.raises(Exception):
             decrypt_credential(ct, keystore=keystore, key_id=kid)
+
+
+class TestGoldenPathL0Followups:
+    """L0 thread-in for the follow-up cadence (orchestrator/followup.py): the
+    pipeline no longer stops at `sent`. A sent non-responder becomes due for
+    touch 2 then touch 3 on a deterministic business-day schedule, computed by
+    READING the ledger; a reply / unsubscribe / bounce between touches CANCELS
+    the remaining follow-ups (re-derived every run); max_touches is never
+    exceeded; and a follow-up is STILL a send the gates refuse when they should.
+
+    The engine decides ELIGIBILITY + TIMING only. The full no-bypass proof
+    through the REAL send path (gated_send_one) is
+    tests/test_followup_send_gate.py (run under gate.py --full); the policy-gate
+    thread below is the lean spine version of "a follow-up still passes the
+    cooldown gate."
+    """
+
+    @staticmethod
+    def _ts(dt) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    def _cold_send(self, led, pid, *, sent_at):
+        """Emit a confirmed cold touch (no reply) for a non-responder."""
+        iid = "snd_" + pid
+        led.append({"type": "enrolled", "person_id": pid, "channel": "email",
+                    "ts": self._ts(sent_at - timedelta(minutes=5)),
+                    "source_skill": "find-leads"})
+        led.append({"type": "send_intent", "person_id": pid, "intent_id": iid,
+                    "channel": "email", "register": "cold-pitch",
+                    "followup_step": 0, "ts": self._ts(sent_at)})
+        led.append({"type": "send_confirmed", "person_id": pid, "intent_id": iid,
+                    "channel": "email", "followup_step": 0,
+                    "ts": self._ts(sent_at)})
+        return iid
+
+    def test_sent_nonresponder_is_due_for_touch_2_at_right_step(
+        self, tmp_ledger, golden_now,
+    ):
+        from orchestrator import followup
+
+        self._cold_send(tmp_ledger, "p_nonresponder",
+                        sent_at=golden_now - timedelta(days=14))
+        cadence = followup.CadenceConfig(enabled=True)
+        due = followup.compute_due_followups_from_ledger(
+            tmp_ledger, cadence, now=golden_now,
+        )
+        assert len(due) == 1, f"Follow-ups - expected exactly one due, got {due}"
+        assert due[0].person_id == "p_nonresponder"
+        assert due[0].next_step == 1 and due[0].touch_no == 2, \
+            f"Follow-ups - wrong step: {due[0]}"
+
+    @pytest.mark.parametrize("term", ["reply_received", "suppression_added",
+                                      "bounce_detected"])
+    def test_terminator_between_touches_cancels(self, tmp_ledger, golden_now, term):
+        from orchestrator import followup
+
+        self._cold_send(tmp_ledger, "p_x", sent_at=golden_now - timedelta(days=14))
+        tmp_ledger.append({"type": term, "person_id": "p_x",
+                           "ts": self._ts(golden_now - timedelta(days=13))})
+        cadence = followup.CadenceConfig(enabled=True)
+        assert followup.compute_due_followups_from_ledger(
+            tmp_ledger, cadence, now=golden_now,
+        ) == [], f"Follow-ups - {term} after last touch must cancel"
+
+    def test_never_exceeds_max_touches(self, tmp_ledger, golden_now):
+        from orchestrator import followup
+
+        # cold + 2 follow-ups all confirmed = 3 touches = max_touches.
+        for i, days in enumerate((40, 30, 20)):
+            iid = f"snd_max_{i}"
+            sent = golden_now - timedelta(days=days)
+            tmp_ledger.append({"type": "send_intent", "person_id": "p_max",
+                               "intent_id": iid, "channel": "email",
+                               "register": "cold-pitch", "followup_step": i,
+                               "ts": self._ts(sent)})
+            tmp_ledger.append({"type": "send_confirmed", "person_id": "p_max",
+                               "intent_id": iid, "channel": "email",
+                               "followup_step": i, "ts": self._ts(sent)})
+        cadence = followup.CadenceConfig(enabled=True)
+        assert followup.compute_due_followups_from_ledger(
+            tmp_ledger, cadence, now=golden_now,
+        ) == [], "Follow-ups - must never exceed max_touches"
+
+    def test_followup_send_still_refused_by_policy_gate_no_bypass(
+        self, tmp_ledger, golden_now,
+    ):
+        # A follow-up is still a send: the policy engine refuses a re-engagement
+        # that violates a cooldown rule, exactly like a first touch. (The engine
+        # schedules; it does not exempt the send from any gate.)
+        from orchestrator.policy import cooldown as cd, engine, types as t
+
+        self._cold_send(tmp_ledger, "p_pol", sent_at=golden_now - timedelta(days=14))
+        rule = cd.RequiresPriorSendRule(
+            name="reengagement-needs-old-coldpitch",
+            block_when={"register": "re-engagement"},
+            requires_register="cold-pitch", min_age_days=999,
+        )
+        ctx = t.RuleContext(
+            person_id="p_pol", channel="email", register="re-engagement",
+            email="pol@loopwell.example", email_domain="loopwell.example",
+            now=golden_now, timezone="UTC", ledger=tmp_ledger,
+        )
+        assert isinstance(engine.evaluate([rule], ctx), t.Block), \
+            "Follow-ups - a re-engagement send must still hit the cooldown gate"

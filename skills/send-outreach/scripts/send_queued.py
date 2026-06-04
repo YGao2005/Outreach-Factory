@@ -65,6 +65,7 @@ if _ORCHESTRATOR.exists() and str(_ORCHESTRATOR) not in sys.path:
 import identity                       # noqa: E402
 import ledger as _ledger              # noqa: E402
 import policy as _policy              # noqa: E402
+import followup as _followup          # noqa: E402  cadence engine — pure ledger walk (import-lean; only depends on ledger)
 import security as _security          # noqa: E402  Pillar J J7 — CAN-SPAM footer + List-Unsubscribe (ADR-0079)
 # reconcile is imported LAZILY inside _maybe_run_quick_reconcile (not at module
 # scope): the pre-send freshness gate is best-effort + opt-out, and reconcile
@@ -540,6 +541,7 @@ def gated_send_one(
     release_lock: Optional[Callable[[str], None]] = None,
     writeback: Optional[Callable[[TouchDraft, str | None], str | None]] = _vault_writeback,
     security_cfg: Optional["_security.SecurityConfig"] = None,
+    cadence: Optional["_followup.CadenceConfig"] = None,
 ) -> dict:
     """One draft through gate → two-phase send → writeback.
 
@@ -566,7 +568,8 @@ def gated_send_one(
             draft, gmail_client=gmail_client, led=led,
             sender_name=sender_name, register=register, run_id=run_id,
             acquire_lock=acquire_lock, release_lock=release_lock,
-            writeback=writeback, security_cfg=security_cfg, _span=_span,
+            writeback=writeback, security_cfg=security_cfg, cadence=cadence,
+            _span=_span,
         )
 
 
@@ -582,6 +585,7 @@ def _gated_send_one_inner(
     release_lock: Optional[Callable[[str], None]],
     writeback: Optional[Callable[[TouchDraft, str | None], str | None]],
     security_cfg: Optional["_security.SecurityConfig"],
+    cadence: Optional["_followup.CadenceConfig"],
     _span,
 ) -> dict:
     """Internal body of :func:`gated_send_one` — wrapped by the
@@ -605,12 +609,33 @@ def _gated_send_one_inner(
     if person_id is None or identity.id_is_temporary(person_id):
         return _blocked(led, draft, person_id=person_id, reason="identity_incomplete")
 
+    # The follow-up step this send represents = the count of CONFIRMED prior
+    # touches to this person on email (0 = the cold email, 1 = first follow-up,
+    # 2 = second follow-up). Tagged onto the send events below so the ledger
+    # records which touch each send was, and used to refine the dedup guardrail.
+    followup_step = led.confirmed_send_count(person_id, channel="email")
+
     prior = led.last_send_for(person_id, channel="email")
     if prior is not None:
-        return _blocked(
-            led, draft, person_id=person_id, reason="already_sent",
-            detail=f"prior intent={prior.intent_id} at {prior.ts}",
-        )
+        # A confirmed prior send exists. That is a DUPLICATE — unless the
+        # cadence engine, re-derived from the ledger HERE at send time, says this
+        # person is genuinely due for exactly this next follow-up touch. This
+        # REFINES the dedup; it does not bypass it. Suppression + cooldown +
+        # daily-cap + warming all still run below, exactly like a first touch,
+        # and the engine's stop_on terminators (a reply / unsubscribe / bounce)
+        # already make a responded prospect not-due, so this can never re-mail
+        # someone who opted out.
+        action = None
+        if cadence is not None and cadence.enabled and followup_step >= 1:
+            action = _followup.is_followup_due(
+                led.all_events(), person_id, cadence,
+                now=datetime.now(timezone.utc),
+            )
+        if action is None or action.next_step != followup_step:
+            return _blocked(
+                led, draft, person_id=person_id, reason="already_sent",
+                detail=f"prior intent={prior.intent_id} at {prior.ts}",
+            )
 
     # Policy gate (Pillar A Week 1 — replaces the Phase 5.5 Week 4 hook).
     # Loads cooldown rules from ~/.outreach-factory/policies/cooldowns.yml
@@ -668,6 +693,7 @@ def _gated_send_one_inner(
             "email": draft.person.email,
             "subject_hash": f"sha256:{subject_hash}",
             "register": register,
+            "followup_step": followup_step,
         })
 
         footer = INTENT_FOOTER_TEMPLATE.format(intent_id=intent_id)
@@ -739,6 +765,7 @@ def _gated_send_one_inner(
             "gmail_message_id": msg_id,
             "gmail_thread_id": thread_id,
             "email": draft.person.email,
+            "followup_step": followup_step,
         })
 
         # I7 cost-event emission (ADR-0006): Gmail is quota-only; the
@@ -2974,6 +3001,17 @@ def main() -> int:
     else:
         print("CAN-SPAM footer: OFF (no `security:` config block)")
 
+    # Follow-up cadence (opt-in). Loaded once for the batch: when enabled, a
+    # second+ touch to a person the cadence engine says is genuinely due is
+    # permitted past the duplicate-send dedup (still subject to every other
+    # gate). Off by default, so a greenfield install never follows up.
+    cadence = _followup.load_cadence_from_config()
+    if cadence.enabled:
+        print(f"Follow-ups: ON (max {cadence.max_touches} touches; "
+              f"{len(cadence.steps)} follow-up step(s))")
+    else:
+        print("Follow-ups: OFF (set followup.enabled: true in config.yml)")
+
     # Pre-send suppression gate (honors recipients who used the J7 one-click
     # unsubscribe). OFF until the suppressions API URL is configured (post-deploy).
     suppression_check = _suppression_checker()
@@ -3007,7 +3045,7 @@ def main() -> int:
             sender_name=SENDER_NAME,
             run_id=run_id,
             acquire_lock=acquire_lock, release_lock=release_lock,
-            security_cfg=security_cfg,
+            security_cfg=security_cfg, cadence=cadence,
         )
         if outcome["ok"]:
             sent += 1

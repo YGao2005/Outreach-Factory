@@ -55,6 +55,9 @@ from .migration_0004_add_conversation_status_to_person_notes import (
 from .migration_0005_add_discovery_lineage_to_identity_keys import (
     MIGRATION as MIGRATION_0005_ADD_DISCOVERY_LINEAGE,
 )
+from .migration_0006_add_followup_step_to_person_notes import (
+    MIGRATION as MIGRATION_0006_ADD_FOLLOWUP_STEP,
+)
 
 
 MIGRATIONS: list[Migration] = [
@@ -63,4 +66,5 @@ MIGRATIONS: list[Migration] = [
     MIGRATION_0003_ADD_LINKEDIN_ACTION,
     MIGRATION_0004_ADD_CONVERSATION_STATUS,
     MIGRATION_0005_ADD_DISCOVERY_LINEAGE,
+    MIGRATION_0006_ADD_FOLLOWUP_STEP,
 ]

@@ -699,6 +699,27 @@ class Ledger:
                 best = outcome
         return Event.from_dict(best) if best else None
 
+    def confirmed_send_count(self, person_id: str, channel: str = "email") -> int:
+        """Number of CONFIRMED sends to ``(person_id, channel)`` — the follow-up
+        cadence's touch count.
+
+        Counts the per-channel ``*_confirmed`` events (``_CONFIRMED_TYPES`) that
+        carry the matching ``channel`` field. The send path reads this BEFORE
+        appending a new ``send_intent`` and stamps the result as the send's
+        ``followup_step`` (0 for the cold email, 1 for the first follow-up, …),
+        so the ledger records which touch each send was.
+        ``orchestrator.followup`` derives the same count from ``send_confirmed``
+        events directly; the two agree on the email channel by construction.
+        """
+        self._build_indexes()
+        n = 0
+        for e in self._idx_person.get(person_id, []):
+            if e.get("type") in _CONFIRMED_TYPES and (
+                e.get("channel") or "email"
+            ) == channel:
+                n += 1
+        return n
+
     def open_intents(
         self,
         *,

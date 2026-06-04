@@ -80,3 +80,54 @@ def test_status_with_cap_shows_remaining(tmp_path, monkeypatch):
     out = buf.getvalue()
     assert "1 / 25" in out
     assert "24 remaining" in out
+
+
+def test_status_shows_followups_due_when_enabled(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    ldir = tmp_path / "ledger"
+    monkeypatch.setenv("OUTREACH_FACTORY_LEDGER_DIR", str(ldir))
+    cfg = tmp_path / "config.yml"
+    cfg.write_text(
+        "followup:\n"
+        "  enabled: true\n"
+        "  max_touches: 3\n"
+        "  steps:\n"
+        "    - after_business_days: 3\n"
+        "    - after_business_days: 5\n"
+    )
+    monkeypatch.setenv("OUTREACH_FACTORY_CONFIG", str(cfg))
+
+    # A cold touch 14 days ago, no reply since -> due for follow-up 1.
+    ts = (datetime.now(timezone.utc) - timedelta(days=14)).strftime(
+        "%Y-%m-%dT%H:%M:%S.000Z"
+    )
+    led = _ledger.Ledger(ldir)
+    led.append({"type": "send_intent", "channel": "email", "person_id": "p1",
+                "intent_id": "i1", "register": "cold-pitch", "ts": ts})
+    led.append({"type": "send_confirmed", "channel": "email", "person_id": "p1",
+                "intent_id": "i1", "followup_step": 0, "ts": ts})
+
+    rc, out = _run_status()
+    assert rc == 0
+    assert "FOLLOW-UPS" in out
+    assert "due now         1" in out
+    assert "follow-up 1: 1" in out
+    assert "touch 1: 1" in out
+
+
+def test_status_followups_off_is_quiet_nudge(tmp_path, monkeypatch):
+    ldir = tmp_path / "ledger"
+    monkeypatch.setenv("OUTREACH_FACTORY_LEDGER_DIR", str(ldir))
+    cfg = tmp_path / "config.yml"
+    cfg.write_text("followup:\n  enabled: false\n")
+    monkeypatch.setenv("OUTREACH_FACTORY_CONFIG", str(cfg))
+
+    led = _ledger.Ledger(ldir)
+    led.append({"type": "send_confirmed", "channel": "email", "person_id": "p1",
+                "intent_id": "i1", "followup_step": 0})
+
+    rc, out = _run_status()
+    assert rc == 0
+    assert "follow-ups off" in out
+    assert "FOLLOW-UPS" not in out  # the full section stays hidden when disabled

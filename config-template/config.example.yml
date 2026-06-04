@@ -192,3 +192,32 @@ warming:
   # Optional: explicit per-week fractions of the cap, overriding weeks_to_full.
   # The last value should be 1.0 (steady at the cap). Example for a slow ramp:
   # fractions: [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+# ============================================================
+# Follow-ups - a deterministic, business-day cadence after the cold email
+# ============================================================
+# Cold outreach is mostly follow-ups: a single touch captures maybe 1-3% reply;
+# a short 3-touch sequence multiplies that. The factory's cadence engine
+# (orchestrator/followup.py) reads the ledger and decides WHO is due for WHICH
+# follow-up touch now. It is deterministic and read-only: it never sends and
+# never bypasses a gate. A follow-up is still a send, so it passes suppression +
+# cooldown + the daily cap + the warming ceiling at send time, exactly like a
+# first touch.
+#
+# A reply, unsubscribe, or bounce after the last touch cancels all pending
+# follow-ups (re-derived from the ledger every run, so nothing survives a reply).
+# `outreach-factory status` shows who is due today and the per-step send counts.
+#
+#   outreach-factory followup --json        # the due-now worklist (for dispatch)
+#
+# Off by default. Turn it on once your mailbox is warm and you have reviewed the
+# re-engagement drafts the dispatch skill produces (the review gate stays manual
+# unless you set auto_send: true, which is a deliberate later step).
+followup:
+  enabled: false          # opt-in; off by default
+  max_touches: 3          # touch 1 (the cold email) + 2 follow-ups
+  steps:
+    - after_business_days: 3   # touch 2: a short bump, new angle
+    - after_business_days: 5   # touch 3: a brief breakup ("should I close the loop?")
+  stop_on: [reply, unsubscribe, bounce]   # any of these after the last touch cancels
+  auto_send: false        # keep the human review gate (drafted -> ready stays manual)

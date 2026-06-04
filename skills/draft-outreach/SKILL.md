@@ -328,6 +328,44 @@ If the channel-default doesn't fit (e.g., prospect publishes a personal Gmail as
 
 ---
 
+## Follow-up sequences (re-engagement touches 2 and 3)
+
+A follow-up is just the `re-engagement` register at a specific step in a cadence.
+The factory's cadence engine (`orchestrator/followup.py`) decides WHO is due for
+WHICH follow-up touch and WHEN, by reading the ledger; `/dispatch-outreach`
+routes a due prospect here with the step number. You do NOT decide timing or
+eligibility; you draft the touch the engine asked for.
+
+```bash
+/draft-outreach "{vault.active_subdir}/Some Person.md" --register re-engagement --followup-step 1
+```
+
+`--followup-step N` selects the variant (1 = touch 2, 2 = touch 3). If the flag
+is absent, infer the step from the prospect's `followup_step:` frontmatter (the
+denormalized count of follow-ups already sent) plus one.
+
+- **Touch 2 (follow-up 1) - a short bump, new angle.** 40-60 words. Reference the
+  prior unanswered touch honestly in one clause (do NOT restate the whole pitch,
+  do NOT fake forgetting, do NOT apologize for the first email). Lead with a NEW,
+  specific reason to reply: a fresh hook, a sharper one-line framing of the
+  wedge, or a smaller ask than the first. The body is fixed; only the first
+  sentence varies per prospect (per the outreach-draft-style rule).
+- **Touch 3 (follow-up 2) - a brief breakup.** 25-40 words. Give permission to
+  close the loop ("if this isn't a fit or the timing's off, no worries, I'll
+  leave it here"). One sentence of why-it-could-still-matter, then the close.
+  Breakups get replies precisely because they ask for nothing.
+
+Everything else is unchanged: the humanizer runs in a fresh context anchored to
+the `re-engagement` reference example, the Phase 5 anti-tell checklist runs, and
+NO em dashes. The re-engagement anti-tells above still apply verbatim (`Just
+bumping this to the top of your inbox`, `Following up on my previous email`,
+`Hope you're well`, quoting the prior email, apologizing).
+
+Save the Touch note with `pipeline_stage: followup_<N>_drafted` (NOT `ready`):
+`/dispatch-outreach` and the operator handle the manual review gate from there.
+
+---
+
 ## Channel fallback rules
 
 - **LinkedIn invite blocked** (`connect_unavailable`, "Follow" default profile) → fallback order: (1) email if address known + verified, (2) Twitter DM if both follow each other, (3) public-comment if they have a recent relevant post, (4) hold + look for a warm intro path

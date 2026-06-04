@@ -321,7 +321,53 @@ needs the orchestrator field flipped on:
 
 ## How a prospect EXITS the pipeline
 
-When `pipeline_stage: sent`, the note is terminal for this round. Reply handling is manual (the operator reads the inbox, decides per-prospect). If the operator wants to re-engage, they flip the stage manually to whatever's appropriate for the next round.
+When `pipeline_stage: sent`, the note is terminal for this round UNLESS follow-ups are enabled (see below). Reply handling is manual (the operator reads the inbox, decides per-prospect). If the operator wants to re-engage outside the cadence, they flip the stage manually to whatever's appropriate for the next round.
+
+---
+
+## Follow-ups (a deterministic business-day cadence after `sent`)
+
+When `followup.enabled: true` in config, a `sent` prospect who has not replied is not terminal: the cadence engine sequences them through touch 2, then touch 3, on a business-day schedule. The engine (`orchestrator/followup.py`) decides WHO is due for WHICH follow-up touch by READING the ledger. It is deterministic and read-only. It NEVER sends and NEVER bypasses a gate. Your job is to turn its worklist into drafts, keep the manual review gate, and let `/send-outreach` do the gated send.
+
+**Step 1 - get the due-now worklist (the source of truth for who to follow up):**
+
+```bash
+python {config.factory.home}/orchestrator/followup.py --json
+```
+
+Output: `{"enabled": true, "max_touches": 3, "due": [{"person_id", "next_step", "touch_no", "last_touch_ts", "last_touch_intent_id", "register"}, ...]}`. Each entry is a person genuinely due RIGHT NOW (delay elapsed, under `max_touches`, and no reply / unsubscribe / bounce since the last touch). If `enabled` is false, follow-ups are off: skip this whole section.
+
+Do NOT re-implement "who replied" or "how long since the last touch" yourself. The engine re-derives all of it from the ledger every run; a prospect who replied between touches simply will not appear in `due`.
+
+**Step 2 - draft each due follow-up (re-engagement register, the right step):**
+
+For each due person, spawn a `/draft-outreach` subagent with `--register re-engagement --followup-step <next_step>` (1 = touch 2 short bump, 2 = touch 3 breakup). Resolve the person's note the same way the other stages do. The subagent saves the Touch note and sets `pipeline_stage: followup_<next_step>_drafted`.
+
+**Step 3 - the MANUAL review gate (do not auto-advance):**
+
+`followup_<N>_drafted → followup_<N>_ready` is a manual gate, exactly like `drafted → ready`. The operator reviews the bump / breakup and flips the stage to `followup_<N>_ready` himself. Never auto-advance this transition. (`followup.auto_send: false` is the default and this skill honors it; an opt-in auto-send is a separate, later step.)
+
+**Step 4 - send (still fully gated):**
+
+A `followup_<N>_ready` prospect is sent by `/send-outreach`, which advances the stage to `followup_<N>_sent`. The follow-up is STILL a send: it passes suppression + cooldown + the daily cap + the warming ceiling at send time, exactly like a first touch. The send path itself re-confirms with the cadence engine that the person is genuinely due before letting a second touch past the duplicate-send guard, so a follow-up can never go out to someone who opted out, even if a stale draft is left around.
+
+**Stages (the follow-up extension of the state machine):**
+
+```
+sent → followup_1_drafted → followup_1_ready → followup_1_sent
+     → followup_2_drafted → followup_2_ready → followup_2_sent   (terminal at max_touches)
+```
+
+| From                | To                  | Skill              | Automated? |
+|---------------------|---------------------|--------------------|------------|
+| sent (+ due)        | followup_1_drafted  | /draft-outreach    | ✅ yes (when due) |
+| followup_1_drafted  | followup_1_ready    | (user review)      | ⏸ NO - manual gate |
+| followup_1_ready    | followup_1_sent     | /send-outreach     | ✅ yes |
+| followup_1_sent (+ due) | followup_2_drafted | /draft-outreach | ✅ yes (when due) |
+| followup_2_drafted  | followup_2_ready    | (user review)      | ⏸ NO - manual gate |
+| followup_2_ready    | followup_2_sent     | /send-outreach     | ✅ yes |
+
+`--status` should also surface the follow-up due count (or run `outreach-factory status`, which prints "FOLLOW-UPS  due now N" + the per-touch send counts).
 
 ---
 

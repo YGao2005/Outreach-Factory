@@ -91,7 +91,7 @@ class TestSyntheticBeforeState:
         (backfill enrolled.source_skill per ADR-0036 D170)."""
         runner = _build_runner(synthetic_state_dir)
         pending = runner.pending()
-        assert len(pending) == 19
+        assert len(pending) == 20
         ids = [m.id for m in pending]
         assert ids == [
             "0001_add_schema_version_to_person_notes",              # vault
@@ -99,6 +99,7 @@ class TestSyntheticBeforeState:
             "0003_add_linkedin_action_to_touch_notes",               # vault (Pillar C Week 2)
             "0004_add_conversation_status_to_person_notes",          # vault (Pillar D Week 4-5)
             "0005_add_discovery_lineage_to_identity_keys",           # vault (Pillar E Week 9-11)
+            "0006_add_followup_step_to_person_notes",                # vault (follow-up cadence)
             "0001_close_orphan_send_intents",                        # ledger
             "0002_backfill_send_history",                            # ledger
             "0003_baseline_li_invite_history",                       # ledger (Pillar C Week 2)
@@ -126,13 +127,14 @@ class TestSyntheticBeforeState:
         this order without amendment."""
         runner = _build_runner(synthetic_state_dir)
         pending = runner.pending()
-        # 5 VAULT migrations (0001-0005), 7 LEDGER migrations
-        # (0001-0007), 7 POLICY migrations (0001-0007) = 19 total.
-        for i in range(5):
+        # 6 VAULT migrations (0001-0006), 7 LEDGER migrations
+        # (0001-0007), 7 POLICY migrations (0001-0007) = 20 total. The
+        # follow-up-cadence vault/0006 slots in after vault/0005.
+        for i in range(6):
             assert pending[i].category == MigrationCategory.VAULT
-        for i in range(5, 12):
+        for i in range(6, 13):
             assert pending[i].category == MigrationCategory.LEDGER
-        for i in range(12, 19):
+        for i in range(13, 20):
             assert pending[i].category == MigrationCategory.POLICY
 
     def test_person_notes_lack_id_pre_migration(self, synthetic_state_dir):
@@ -181,8 +183,8 @@ class TestSingleMigrationApply:
         migrations = 5."""
         runner = _build_runner(synthetic_state_dir)
         results = runner.apply(MigrationCategory.VAULT)
-        # vault/0001 + vault/0002 + vault/0003 + vault/0004 + vault/0005
-        assert len(results) == 5
+        # vault/0001 + 0002 + 0003 + 0004 + 0005 + 0006 (follow-up cadence)
+        assert len(results) == 6
         # All Person notes now have schema_version + id + identity_keys.
         for name in (
             "Alice Anderson.md", "Bob Brown.md",
@@ -299,7 +301,7 @@ class TestFullBatchApply:
         Pillar E Week 9-11 adds vault/0005 + ledger/0007. Total = 19."""
         runner = _build_runner(synthetic_state_dir)
         results = runner.apply()
-        assert len(results) == 19
+        assert len(results) == 20
 
         # Verify after-state across all surfaces.
         # Vault: every Person note has schema_version + id + identity_keys.
@@ -429,6 +431,7 @@ class TestFullBatchApply:
             "0003_add_linkedin_action_to_touch_notes",
             "0004_add_conversation_status_to_person_notes",
             "0005_add_discovery_lineage_to_identity_keys",
+            "0006_add_followup_step_to_person_notes",
         ]
         assert state.applied[MigrationCategory.LEDGER.value] == [
             "0001_close_orphan_send_intents",
@@ -713,7 +716,7 @@ class TestDryRunPreview:
         Pillar E Week 9-11: 2)."""
         runner = _build_runner(synthetic_state_dir)
         preview = runner.dry_run()
-        assert len(preview) == 19
+        assert len(preview) == 20
         # Every result is marked dry_run + applied=True.
         for r in preview:
             assert r.dry_run is True
@@ -776,7 +779,7 @@ class TestDryRunPreview:
         runner = _build_runner(synthetic_state_dir)
         preview = runner.dry_run()
         results = runner.apply()
-        assert len(preview) == len(results) == 19
+        assert len(preview) == len(results) == 20
         by_id = {(p.migration_id, r.migration_id): (p, r)
                  for p, r in zip(preview, results)}
         for (p_id, r_id), (p, r) in by_id.items():
@@ -1002,7 +1005,7 @@ class TestExitCriterionProperty:
         per ADR-0036 D170). Total = 19."""
         runner = _build_runner(synthetic_state_dir)
         results = runner.apply()
-        assert len(results) == 19
+        assert len(results) == 20
         assert runner.pending() == []
 
         # I3 invariant: every Person frontmatter declares schema_version.
@@ -1170,6 +1173,7 @@ class TestExitCriterionProperty:
             "0003_add_linkedin_action_to_touch_notes",
             "0004_add_conversation_status_to_person_notes",
             "0005_add_discovery_lineage_to_identity_keys",
+            "0006_add_followup_step_to_person_notes",
         ]
         assert state.applied[MigrationCategory.LEDGER.value] == [
             "0001_close_orphan_send_intents",
