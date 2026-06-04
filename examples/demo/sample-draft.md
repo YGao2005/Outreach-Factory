@@ -1,8 +1,8 @@
 # Final draft - Riley Okafor (cold-pitch / email)
 
 This is what the factory produces. The agent assembles one option per scaffold
-dimension (Phase 3.5), then rewrites it inline in Devon's voice grounded by the
-voice corpus (Phase 4), then runs the humanizer anti-tell checklist (Phase 5).
+dimension (Phase 3.5), then the humanizer rewrites it inline against the
+anti-tell checklist, using a human-written reference touch for tone (Phase 4-5).
 
 It is committed here so the CLI demo can show a complete result with no LLM call.
 To generate a fresh one live, run `/draft-outreach --demo` inside Claude Code.

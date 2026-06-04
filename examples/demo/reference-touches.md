@@ -1,20 +1,17 @@
-# Demo voice corpus for the Outreach Factory `--demo` path
+# Demo reference touches for the Outreach Factory `--demo` path
 
 These are FAKE example emails written in the voice of "Devon", the demo sender
-(a developer shipping a small open-source library called Carillon). In a real
-install your corpus is built from YOUR own sent mail and embedded with a local
-model; see [voice/README.md](../../voice/README.md).
+(a developer shipping a small open-source library called Carillon). They stand
+in for the kind of human-written touch the humanizer reads as a tone reference
+when it rewrites a draft. There is no corpus to build and no model to train:
+the product has no machine learning anywhere, in the demo or a real install.
+The de-AI step is the humanizer, an LLM pass against an anti-tell checklist
+plus one human-written reference example in the same register.
 
-The demo deliberately uses NO machine learning. With a corpus this small,
-ranking exemplars by similarity would be theater, and forcing a large model
-download would defeat a zero-setup demo. The agent reads these directly to
-ground the Phase 4 rewrite, and the CLI prints them as the voice reference.
-
-This file is intentionally plain markdown (not the real `index.json` format) so
-the `bin/outreach-factory demo` walkthrough parses it with the standard library
-alone, no third-party packages. Each exemplar is one `##` block. The header line
-is `id | register | channel | date`; an optional `Subject:` line follows; the
-rest is the body.
+This file is intentionally plain markdown so the `bin/outreach-factory demo`
+walkthrough parses it with the standard library alone, no third-party packages.
+Each exemplar is one `##` block. The header line is `id | register | channel |
+date`; an optional `Subject:` line follows; the rest is the body.
 
 What to notice across these: a specific opener, a plain wedge, a single ask, an
 honest vulnerable note, a plain sign-off, and no em dashes anywhere.

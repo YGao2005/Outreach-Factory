@@ -154,7 +154,8 @@ def check_vault(config: dict) -> dict:
         return _result(
             "vault", FAIL, f"{vault} does not exist",
             hint="point vault.path at your markdown CRM root: a plain folder of "
-                 ".md files (the Obsidian app is not required; `init` scaffolds it)",
+                 ".md files (the Obsidian app is not required), then run "
+                 "`outreach-factory migrate` to scaffold it",
         )
 
     missing = [
@@ -167,7 +168,8 @@ def check_vault(config: dict) -> dict:
             "vault",
             FAIL,
             f"{vault} missing subdirs: {', '.join(missing)}",
-            hint="create them or fix the names in config (Obsidian default uses '10 People' etc.)",
+            hint="run `outreach-factory migrate` to create them, or fix the names "
+                 "in config (Obsidian default uses '10 People' etc.)",
         )
 
     # queue_subdir is sometimes auto-created at first run - warn if missing, don't fail
@@ -298,6 +300,19 @@ def check_gmail_creds(config: dict) -> dict:
             WARN,
             "email_send.gmail_api is false - Gmail send disabled",
             hint="set gmail_api: true and configure gmail_credentials_path / gmail_token_path",
+            enables="/send-outreach Gmail channel",
+        )
+    # The Google send libraries live in skills/send-outreach/requirements.txt,
+    # NOT orchestrator/requirements.txt. With gmail_api on but those missing,
+    # `init` crashes on import; surface that here so doctor is not falsely green.
+    try:
+        importlib.import_module("google.auth")
+    except ImportError:
+        return _result(
+            "gmail_creds",
+            FAIL,
+            "gmail_api is true but the Google send deps are not installed",
+            hint="pip install -r skills/send-outreach/requirements.txt",
             enables="/send-outreach Gmail channel",
         )
     creds_str = send.get("gmail_credentials_path", "").strip()
@@ -460,18 +475,12 @@ def check_migrations(config: dict | None) -> dict:
 
     listing = ", ".join(f"{m.category.value}/{m.id}" for m in pending)
 
-    # The actual REPL command operators need to apply pending migrations.
-    # Surfaced inline in both WARN + FAIL hints (Pillar B Week 6
-    # parallel-review P1 fix per `.planning/REVIEW-pillar-b-operator-ux.md`
-    # §P1-1). The Pillar I CLI work absorbs this into a proper
-    # `python -m orchestrator.migrations apply` invocation; until then
-    # the REPL one-liner is the canonical operator path.
-    apply_repl = (
-        "python -c \"from pathlib import Path; "
-        "from orchestrator.migrations import MigrationRunner; "
-        "MigrationRunner(vault_dir=Path('~/your-vault').expanduser())"
-        ".apply()\""
-    )
+    # The operator command to apply pending migrations. The CLI wraps the
+    # runner so it sets sys.path + creates the vault/ledger/policy dirs itself
+    # (the old hand-edited REPL one-liner crashed on a fresh clone: a bare
+    # `import ledger` and a missing policy dir). Surfaced inline in both the
+    # WARN + FAIL hints.
+    apply_cmd = "outreach-factory migrate"
 
     # Per ADR-0013 D26 + D29: exact-match "1" opts into strict mode.
     # Read at call time (not import time) so the test harness's
@@ -485,13 +494,13 @@ def check_migrations(config: dict | None) -> dict:
             "migrations", FAIL,
             f"STRICT mode: {len(pending)} pending: {listing}",
             hint=f"OUTREACH_FACTORY_STRICT_MIGRATIONS=1 is set; apply: "
-                 f"{apply_repl}  (or unset the env var to demote to "
+                 f"{apply_cmd}  (or unset the env var to demote to "
                  f"WARN; see INSTALL.md \"Apply pending migrations\")",
         )
     return _result(
         "migrations", WARN,
         f"{len(pending)} pending: {listing}",
-        hint=f"apply: {apply_repl}  (see INSTALL.md \"Apply pending "
+        hint=f"apply: {apply_cmd}  (see INSTALL.md \"Apply pending "
              f"migrations\" - Pillar I will harden this to refuse-on-"
              f"pending; opt in early via "
              f"OUTREACH_FACTORY_STRICT_MIGRATIONS=1)",

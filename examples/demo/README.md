@@ -32,27 +32,28 @@ generated earlier by the agent and committed so this path needs no LLM.
 /draft-outreach --demo
 ```
 
-This is the full wow: the agent reads the demo prospect and the demo voice
-corpus, scaffolds, assembles, and rewrites the draft **live in its own call** (so
-the prose is generated fresh, never the canned one), then runs the humanizer
+This is the full wow: the agent reads the demo prospect and the demo reference
+examples, scaffolds, assembles, and rewrites the draft **live in its own call**
+(so the prose is generated fresh, never the canned one), then runs the humanizer
 checklist. Subscription-billed, no API. Nothing is sent and nothing is written
 to a real vault.
 
 ## Why there is no machine learning here
 
-In a real install, the voice translator embeds your draft with a local model and
-ranks your past emails by similarity. With a demo corpus of six emails that
-ranking would be meaningless, and forcing a large model download would defeat a
-zero-setup demo. So the demo skips retrieval entirely: the agent reads all the
-exemplars directly. The real, ML-backed retrieval path is exercised by the test
-suite, not by this demo.
+There is none anywhere in the product, not just the demo. The thing that keeps
+drafts from reading as AI-written is the humanizer: an LLM pass (your own Claude
+Code session, no API) that rewrites the assembled prose against an anti-tell
+checklist, using one human-written reference example in the same register for
+tone. No corpus build, no embeddings, no similarity ranking, no model download,
+here or in a real install. The reference touches below are exactly that: a few
+human-written examples the agent reads directly.
 
 ## What is in this folder
 
 | File | What it is |
 |---|---|
 | `vault/Riley Okafor.md` | the sample prospect, a Person note with a pre-filled dossier |
-| `voice-corpus.md` | Devon's fake past emails, the voice the rewrite matches |
+| `reference-touches.md` | a few human-written example touches the humanizer reads for tone |
 | `scaffold.md` | the Phase 3 option menu (committed for the CLI path) |
 | `sample-draft.md` | the final draft the agent produced (committed for the CLI path) |
 

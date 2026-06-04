@@ -12,6 +12,8 @@ The dedicated onboarding surface. Subcommands:
              Idempotent: re-running after success is a no-op.
   status     What went out, who replied, what is queued, and whether it is
              safe to send more today. A lean read over the ledger.
+  migrate    Scaffold the vault + state dirs and apply pending migrations.
+             The OAuth-free path to a doctor-green install.
   doctor     Run the preflight checks (scripts/doctor.py).
   config     Copy the config + .env templates into ~/.outreach-factory/.
 
@@ -169,7 +171,7 @@ def _indent(text: str, n: int = 4) -> str:
 
 
 def _parse_demo_corpus(text: str) -> list[dict]:
-    """Parse examples/demo/voice-corpus.md into exemplar dicts (stdlib only).
+    """Parse examples/demo/reference-touches.md into exemplar dicts (stdlib only).
 
     Each exemplar is a ``## id | register | channel | date`` block with an
     optional ``Subject:`` line followed by the body. Prose before the first
@@ -209,7 +211,7 @@ def cmd_demo(_args) -> int:
     model download. The live, agent-generated version is `/draft-outreach
     --demo` inside Claude Code (see examples/demo/README.md)."""
     prospect_path = DEMO_DIR / "vault" / "Riley Okafor.md"
-    corpus_path = DEMO_DIR / "voice-corpus.md"
+    corpus_path = DEMO_DIR / "reference-touches.md"
     scaffold_path = DEMO_DIR / "scaffold.md"
     draft_path = DEMO_DIR / "sample-draft.md"
 
@@ -255,12 +257,13 @@ def cmd_demo(_args) -> int:
     corpus = _parse_demo_corpus(corpus_path.read_text(encoding="utf-8"))
     cold = [e for e in corpus if e.get("register") == "cold-pitch"]
     print(thin)
-    print("  [3 of 4]  VOICE EXEMPLARS  (your own past emails ground the rewrite)")
+    print("  [3 of 4]  REFERENCE TOUCHES  (human-written examples in this register)")
     print(thin)
     print(
-        f"  This is a cold-pitch, so the {len(cold)} cold-pitch exemplars below\n"
-        f"  (of {len(corpus)} total in examples/demo/voice-corpus.md) are the\n"
-        f"  voice the rewrite matches. No similarity model runs in the demo.\n"
+        f"  This is a cold-pitch, so the {len(cold)} cold-pitch examples below\n"
+        f"  (of {len(corpus)} total in examples/demo/reference-touches.md) are the\n"
+        f"  reference the humanizer reads for tone. No model, no embeddings, no\n"
+        f"  retrieval: the agent just reads them.\n"
     )
     for ex in cold:
         subject = ex.get("subject") or "(no subject)"
@@ -269,7 +272,7 @@ def cmd_demo(_args) -> int:
         print()
 
     print(thin)
-    print("  [4 of 4]  FINAL DRAFT  (rewritten inline in the agent's voice)")
+    print("  [4 of 4]  FINAL DRAFT  (rewritten inline against the anti-tell checklist)")
     print(thin)
     print(_indent(draft_path.read_text(encoding="utf-8").strip()))
     print()
@@ -319,7 +322,9 @@ def cmd_init(args) -> int:
         return 2
 
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
-    print(f"Onboarding from {cfg_path}\n")
+    # flush so this banner lands before any stderr the auth step may emit
+    # (a missing-credentials runbook prints to stderr from inside the wizard).
+    print(f"Onboarding from {cfg_path}\n", flush=True)
 
     if args.dry_run:
         # Validate the full wiring without real OAuth, real send, or touching
@@ -329,15 +334,31 @@ def cmd_init(args) -> int:
         home = Path(tempfile.mkdtemp(prefix="of-init-dryrun-"))
         cfg.setdefault("vault", {})["path"] = str(home / "vault")
         tenant_cfg = _tenant_config_from_user_config(cfg, home=home)
-        gmail_authenticate_fn = lambda: _DryRunGmail()  # noqa: E731
+        # Echo the operator's REAL configured sender so the preview reflects
+        # their config, not a placeholder. A real run sends to-self at
+        # founder.email, so the dry-run names the same recipient.
+        dryrun_sender = (cfg.get("founder") or {}).get("email") or "you@example.com"
+        gmail_authenticate_fn = lambda: _DryRunGmail(sender_email=dryrun_sender)  # noqa: E731
         migration_apply_fn = lambda: None  # noqa: E731
         print("(dry-run: fake Gmail seam, throwaway dirs, no real send)\n")
     else:
         home = DEFAULT_HOME
         tenant_cfg = _tenant_config_from_user_config(cfg, home=home)
+        # Scaffold the vault subdirs the skills + doctor expect. Idempotent and
+        # OAuth-free, so even if the Gmail step below stalls, the vault is sane.
+        _scaffold_vault_subdirs(cfg)
         if str(SEND_SCRIPTS) not in sys.path:
             sys.path.insert(0, str(SEND_SCRIPTS))
-        from gmail_client import GmailClient  # real OAuth round-trip
+        try:
+            from gmail_client import GmailClient  # real OAuth round-trip
+        except ImportError as exc:
+            print(
+                f"\n✗ The Gmail send dependencies are not installed ({exc}).\n"
+                f"  Install them, then re-run `outreach-factory init`:\n\n"
+                f"      pip install -r skills/send-outreach/requirements.txt\n",
+                file=sys.stderr,
+            )
+            return 1
 
         gmail_authenticate_fn = GmailClient.authenticate
         migration_apply_fn = None  # use the wizard's real per-tenant migration runner
@@ -364,6 +385,93 @@ def cmd_init(args) -> int:
     print(
         f"\n✓ Onboarding complete for tenant '{result['tenant_id']}'. "
         f"Test send to {result['test_send_to']} round-tripped."
+    )
+    return 0
+
+
+def _scaffold_vault_subdirs(cfg: dict) -> list[Path]:
+    """Create the vault root + the people/companies/lead_lists subdirs the
+    skills and `doctor` expect, reading the (possibly renamed) subdir names
+    from config. Idempotent. Needs no Gmail or OAuth, so it brings a fresh
+    vault to a doctor-green shape even on a machine that has not finished
+    Google sign-in. Returns the subdirs ensured (empty when vault.path unset).
+
+    No migration creates these: the vault baseline migrations READ '10 People'
+    etc., they do not make them, and the wizard only mkdirs the vault root. So
+    this is the one place the CRM skeleton gets laid down.
+    """
+    vault = cfg.get("vault") or {}
+    path = vault.get("path")
+    if not path:
+        return []
+    root = Path(os.path.expanduser(str(path)))
+    names = [
+        vault.get("people_dir") or "10 People",
+        vault.get("companies_dir") or "20 Companies",
+        vault.get("lead_lists_dir") or "60 Lead Lists",
+    ]
+    root.mkdir(parents=True, exist_ok=True)
+    ensured: list[Path] = []
+    for name in names:
+        d = root / name
+        d.mkdir(parents=True, exist_ok=True)
+        ensured.append(d)
+    return ensured
+
+
+def cmd_migrate(_args) -> int:
+    """Scaffold state dirs + apply pending Pillar B migrations. The OAuth-free
+    path to a sane, doctor-green install.
+
+    Creates the vault (+ its subdirs) and the ledger/policy state dirs, then
+    runs the migration runner against THIS install's directories. A user who is
+    blocked on Google OAuth can still reach a working vault with this. It
+    replaces the hand-edited REPL one-liner the docs used to print, which broke
+    on a fresh clone two ways: a bare `import ledger` that only resolves with
+    orchestrator/ on sys.path (this command runs through cli.py, so it does),
+    and a missing policy dir the runner refused to write into (created here).
+    """
+    import yaml
+
+    cfg_path = _config_path()
+    if not cfg_path.exists():
+        print(
+            f"No config at {cfg_path}.\n"
+            f"Run `outreach-factory config` first (copies the template), then edit it.",
+            file=sys.stderr,
+        )
+        return 2
+    cfg = yaml.safe_load(cfg_path.read_text()) or {}
+
+    # Resolve dirs through the SAME bridge `init` uses, so `migrate` and `init`
+    # always operate on identical directories (no policy-vs-policies split).
+    tenant_cfg = _tenant_config_from_user_config(cfg, home=DEFAULT_HOME)
+    for d in (tenant_cfg.vault_dir, tenant_cfg.ledger_dir, tenant_cfg.policy_dir):
+        d.mkdir(parents=True, exist_ok=True)
+    _scaffold_vault_subdirs(cfg)
+    print(f"Vault scaffolded at {tenant_cfg.vault_dir}")
+
+    from orchestrator.migrations.runner import MigrationRunner
+
+    runner = MigrationRunner(
+        ledger_dir=tenant_cfg.ledger_dir,
+        vault_dir=tenant_cfg.vault_dir,
+        policy_dir=tenant_cfg.policy_dir,
+    )
+    pending = runner.pending()
+    if not pending:
+        print("No pending migrations. Already up to date.")
+        print("Run `outreach-factory doctor` to confirm.")
+        return 0
+
+    print(f"Applying {len(pending)} pending migration(s)...")
+    results = runner.apply()
+    applied = [r for r in results if getattr(r, "applied", False)]
+    for r in applied:
+        print(f"  applied {r.category.value}/{r.migration_id}")
+    print(
+        f"\n✓ {len(applied)} migration(s) applied. "
+        f"Run `outreach-factory doctor` to confirm a green vault + no pending."
     )
     return 0
 
@@ -611,6 +719,11 @@ def main(argv: list[str] | None = None) -> int:
         "status",
         help="What went out, who replied, what is queued, and today's headroom.",
     ).set_defaults(func=cmd_status)
+
+    sub.add_parser(
+        "migrate",
+        help="Scaffold the vault + state dirs and apply pending migrations (no OAuth needed).",
+    ).set_defaults(func=cmd_migrate)
 
     sub.add_parser("doctor", help="Run preflight checks (scripts/doctor.py).").set_defaults(
         func=cmd_doctor

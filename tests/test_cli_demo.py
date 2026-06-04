@@ -83,7 +83,7 @@ def test_demo_path_imports_no_third_party(monkeypatch, capsys):
 
 
 def test_demo_corpus_parses_to_six_exemplars():
-    corpus = cli._parse_demo_corpus((DEMO_DIR / "voice-corpus.md").read_text(encoding="utf-8"))
+    corpus = cli._parse_demo_corpus((DEMO_DIR / "reference-touches.md").read_text(encoding="utf-8"))
     assert len(corpus) == 6
     cold = [e for e in corpus if e["register"] == "cold-pitch"]
     assert len(cold) == 3
@@ -108,7 +108,7 @@ def test_demo_prospect_frontmatter_parses():
     "rel",
     [
         "README.md",
-        "voice-corpus.md",
+        "reference-touches.md",
         "scaffold.md",
         "sample-draft.md",
         "vault/Riley Okafor.md",

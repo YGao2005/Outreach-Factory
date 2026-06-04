@@ -18,6 +18,7 @@ cd ~/code/outreach-factory
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r orchestrator/requirements.txt
+pip install -r skills/send-outreach/requirements.txt   # Gmail send deps (google-*); init needs these
 
 # 3. Copy the config + .env templates into ~/.outreach-factory/
 ./bin/outreach-factory config
@@ -42,12 +43,18 @@ cp config-template/unsubscribe-patterns.example.yml \
 # 6. Install skills (symlinks repo skills into ~/.claude/skills/).
 ./install.sh
 
-# 7. Onboard end-to-end (Gmail OAuth, vault setup, first prospect, a real
+# 7. Scaffold the vault + apply pending migrations (no Gmail/OAuth needed).
+#    Creates the vault subdirs the skills expect and applies the Pillar B
+#    migrations. `init` does this too, but running it now means a user who
+#    later stalls on Gmail OAuth still has a working, doctor-green vault.
+./bin/outreach-factory migrate
+
+# 8. Onboard end-to-end (Gmail OAuth, vault setup, first prospect, a real
 #    test send). Preview the wiring with --dry-run first.
 ./bin/outreach-factory init --dry-run
 ./bin/outreach-factory init
 
-# 8. Restart Claude Code so it picks up the new skills.
+# 9. Restart Claude Code so it picks up the new skills.
 ```
 
 ## MCP servers (optional: discovery + the LinkedIn channel)
@@ -149,47 +156,40 @@ will not work until they pass.
 install, it will warn about pending Pillar B migrations:
 
 ```
-⚠ migrations             5 pending: vault/0001_*, vault/0002_*, ledger/0001_*, ledger/0002_*, policy/0001_*
-   hint: apply: python -c "..."
+⚠ migrations             19 pending: vault/0001_* ... ledger/0001_* ... policy/0007_*
+   hint: apply: outreach-factory migrate
 ```
 
-Apply them via the migration runner (the hint surfaces the exact REPL command;
-the canonical form is):
+Apply them with the CLI:
 
 ```bash
-python -c "from pathlib import Path; \
-  from orchestrator.migrations import MigrationRunner; \
-  r = MigrationRunner(vault_dir=Path('~/your-vault').expanduser()); \
-  print('dry-run preview:'); \
-  [print(' ', x.migration_id, '→', x.affected_count, 'affected') for x in r.dry_run()]; \
-  print('applying...'); \
-  r.apply(); \
-  print('done')"
+./bin/outreach-factory migrate
 ```
 
-Replace `~/your-vault` with the path you set as `vault.path` in
-`~/.outreach-factory/config.yml`. The dry-run prints one line per pending
-migration with the affected count; `ledger/0002` will report 0 because of the
-documented cross-category dependency on `vault/0002` (see [docs/adr/0013-replay-exit-criterion-vehicle.md](docs/adr/0013-replay-exit-criterion-vehicle.md)
-§D24-N) - the real `apply()` produces the correct counts.
+This scaffolds the vault (and its subdirs) plus the ledger/policy state dirs,
+then applies every pending migration against the directories your
+`~/.outreach-factory/config.yml` points at. It needs no Gmail or OAuth, so it
+is also the way to reach a working, doctor-green vault when you are still
+sorting out Google sign-in. It is idempotent: re-running after a clean apply is
+a no-op.
 
 Re-run `python3 scripts/doctor.py` after applying - the migrations check should
-now report `✓ no pending migrations`.
+now report `✓ no pending migrations` and the vault check should pass.
 
 ### If apply fails mid-batch
 
 The framework guarantees atomicity at the state-file level: a migration that
-crashes mid-batch is NOT marked applied, and re-running `r.apply()` resumes
+crashes mid-batch is NOT marked applied, and re-running `outreach-factory migrate` resumes
 from where it failed. Per-file atomicity (tmp-then-rename) guarantees no
 half-written Person notes or policy files. The safe recovery is to fix the
-underlying cause (whatever the exception said) and re-run `r.apply()`. Do
+underlying cause (whatever the exception said) and re-run `outreach-factory migrate`. Do
 NOT manually edit `~/.outreach-factory/migrations.state.json` - the
 idempotence checks in each migration handle the resume cleanly.
 
 For the conflict case specifically (`IdentityBackfillConflictError` from
 `vault/0002` when two Person notes share an identity key), fix the conflict
 by editing the offending Person notes' frontmatter (the error message names
-the files + shared keys), then re-run `r.apply()`.
+the files + shared keys), then re-run `outreach-factory migrate`.
 
 ### Strict mode (opt-in)
 

@@ -828,8 +828,14 @@ def run_init_wizard(
     completed_steps.append("gmail_oauth")
 
     # --- Step 2: vault_setup — create the vault dir + run migrations (idempotent).
+    # mkdir the ledger + policy dirs too, not just the vault root: the policy
+    # migrations refuse to write into a non-existent policy_dir, so a fresh
+    # install would otherwise fail HERE (the dirs are not created anywhere else
+    # on the zero-to-test-send path).
     try:
         config.vault_dir.mkdir(parents=True, exist_ok=True)
+        config.ledger_dir.mkdir(parents=True, exist_ok=True)
+        config.policy_dir.mkdir(parents=True, exist_ok=True)
         (migration_apply_fn or _default_migration_apply_fn(config))()
     except Exception as exc:  # noqa: BLE001 — operator-facing refuse-loud boundary
         raise InitWizardError(
