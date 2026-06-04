@@ -1,4 +1,4 @@
-pyyaml>=6.0
+pyyaml>=6.0.3
 # Floor raised to the patched version: CVE-2023-29483 (GHSA-3rq5-2g8h-59hc),
 # a DNS-resolver DoS, is fixed in dnspython 2.6.1. The OSV floor-scan flags the
 # old >=2.0 minimum even though a fresh install resolves to the latest 2.x.
