@@ -2,7 +2,7 @@ pyyaml>=6.0
 # Floor raised to the patched version: CVE-2023-29483 (GHSA-3rq5-2g8h-59hc),
 # a DNS-resolver DoS, is fixed in dnspython 2.6.1. The OSV floor-scan flags the
 # old >=2.0 minimum even though a fresh install resolves to the latest 2.x.
-dnspython>=2.6.1
+dnspython>=2.8.0
 
 # .env loading for the unified secret loader (orchestrator/env_loader.py). The
 # loader degrades to a built-in minimal parser if this is absent, so it is a
