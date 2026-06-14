@@ -1,6 +1,6 @@
 # send-outreach dependencies
 google-auth==2.36.0
-google-auth-oauthlib==1.2.1
+google-auth-oauthlib==1.4.0
 google-api-python-client==2.150.0
 # Match orchestrator/requirements.txt's spec exactly so installing both files
 # never trips pip's resolver: the old exact pin here vs the core's range forced
